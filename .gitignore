@@ -1,0 +1,11 @@
+build/
+CMakeFiles/
+CMakeCache.txt
+*.so
+*.dll
+*.dylib
+*.a
+*.o
+.DS_Store
+.vscode/
+.idea/
