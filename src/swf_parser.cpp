@@ -65,6 +65,7 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
 
     m_abc_tags.clear();
     m_show_frame_positions.clear();
+    m_display_list.clear();
     std::memset(&m_header, 0, sizeof(SWFHeader));
     m_header.background_color_xrgb = 0x00FFFFFF;
 
@@ -165,6 +166,70 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
             m_show_frame_positions.push_back(tag_start_offset);
         }
 
+        // TagDefineShape (2), TagDefineShape2 (22), TagDefineShape3 (32)
+        if (tag_type == 2 || tag_type == 22 || tag_type == 32) {
+            if (tag_length >= 2) {
+                uint16_t character_id = static_cast<uint16_t>(uncompressed_data[offset]) |
+                                       (static_cast<uint16_t>(uncompressed_data[offset + 1]) << 8);
+
+                BitReader tag_reader(uncompressed_data.data() + offset + 2, tag_length - 2);
+                uint8_t shape_nbits = static_cast<uint8_t>(tag_reader.read_bits(5));
+                int32_t s_xmin = tag_reader.read_sbits(shape_nbits);
+                int32_t s_xmax = tag_reader.read_sbits(shape_nbits);
+                int32_t s_ymin = tag_reader.read_sbits(shape_nbits);
+                int32_t s_ymax = tag_reader.read_sbits(shape_nbits);
+                tag_reader.align_byte();
+
+                uint32_t fill_color = 0x00FFFFFF; // Default white
+                size_t payload_idx = offset + 2 + tag_reader.get_byte_offset();
+
+                if (payload_idx < offset + tag_length) {
+                    uint8_t fill_style_count = uncompressed_data[payload_idx++];
+                    if (fill_style_count == 0xFF && payload_idx + 1 < offset + tag_length) {
+                        // UI16 count extended
+                        fill_style_count = uncompressed_data[payload_idx] | (uncompressed_data[payload_idx + 1] << 8);
+                        payload_idx += 2;
+                    }
+
+                    if (fill_style_count > 0 && payload_idx < offset + tag_length) {
+                        uint8_t fill_style_type = uncompressed_data[payload_idx++];
+                        if (fill_style_type == 0x00) { // Solid fill
+                            if (tag_type == 32) { // TagDefineShape3 has RGBA (4 bytes)
+                                if (payload_idx + 4 <= offset + tag_length) {
+                                    uint8_t r = uncompressed_data[payload_idx];
+                                    uint8_t g = uncompressed_data[payload_idx + 1];
+                                    uint8_t b = uncompressed_data[payload_idx + 2];
+                                    // uint8_t a = uncompressed_data[payload_idx + 3];
+                                    fill_color = (static_cast<uint32_t>(r) << 16) |
+                                                 (static_cast<uint32_t>(g) << 8) |
+                                                 static_cast<uint32_t>(b);
+                                }
+                            } else { // TagDefineShape / TagDefineShape2 has RGB (3 bytes)
+                                if (payload_idx + 3 <= offset + tag_length) {
+                                    uint8_t r = uncompressed_data[payload_idx];
+                                    uint8_t g = uncompressed_data[payload_idx + 1];
+                                    uint8_t b = uncompressed_data[payload_idx + 2];
+                                    fill_color = (static_cast<uint32_t>(r) << 16) |
+                                                 (static_cast<uint32_t>(g) << 8) |
+                                                 static_cast<uint32_t>(b);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                SWFShapeDefinition shape;
+                shape.character_id = character_id;
+                shape.x_min = s_xmin / 20;
+                shape.x_max = s_xmax / 20;
+                shape.y_min = s_ymin / 20;
+                shape.y_max = s_ymax / 20;
+                shape.fill_color_xrgb = fill_color;
+
+                m_display_list.register_shape(shape);
+            }
+        }
+
         // TagSetBackgroundColor (9)
         if (tag_type == 9) {
             if (tag_length >= 3) {
@@ -174,6 +239,63 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
                 m_header.background_color_xrgb = (static_cast<uint32_t>(r) << 16) |
                                                  (static_cast<uint32_t>(g) << 8) |
                                                  static_cast<uint32_t>(b);
+            }
+        }
+
+        // TagPlaceObject2 (26)
+        if (tag_type == 26) {
+            if (tag_length >= 3) {
+                uint8_t flags = uncompressed_data[offset];
+                bool has_character = (flags & 0x02) != 0;
+                bool has_matrix = (flags & 0x04) != 0;
+
+                uint16_t depth = static_cast<uint16_t>(uncompressed_data[offset + 1]) |
+                                (static_cast<uint16_t>(uncompressed_data[offset + 2]) << 8);
+
+                size_t p_idx = offset + 3;
+                uint16_t character_id = 0;
+                if (has_character && p_idx + 2 <= offset + tag_length) {
+                    character_id = static_cast<uint16_t>(uncompressed_data[p_idx]) |
+                                  (static_cast<uint16_t>(uncompressed_data[p_idx + 1]) << 8);
+                    p_idx += 2;
+                }
+
+                int32_t translate_x = 0;
+                int32_t translate_y = 0;
+
+                if (has_matrix && p_idx < offset + tag_length) {
+                    BitReader mat_reader(uncompressed_data.data() + p_idx, (offset + tag_length) - p_idx);
+                    bool has_scale = mat_reader.read_bits(1) != 0;
+                    if (has_scale) {
+                        uint8_t n_scale_bits = static_cast<uint8_t>(mat_reader.read_bits(5));
+                        mat_reader.read_sbits(n_scale_bits); // scale_x
+                        mat_reader.read_sbits(n_scale_bits); // scale_y
+                    }
+                    bool has_rotate = mat_reader.read_bits(1) != 0;
+                    if (has_rotate) {
+                        uint8_t n_rotate_bits = static_cast<uint8_t>(mat_reader.read_bits(5));
+                        mat_reader.read_sbits(n_rotate_bits); // skew_0
+                        mat_reader.read_sbits(n_rotate_bits); // skew_1
+                    }
+                    uint8_t n_trans_bits = static_cast<uint8_t>(mat_reader.read_bits(5));
+                    translate_x = mat_reader.read_sbits(n_trans_bits);
+                    translate_y = mat_reader.read_sbits(n_trans_bits);
+                }
+
+                // Convert translate twips to pixels
+                int32_t trans_x_px = translate_x / 20;
+                int32_t trans_y_px = translate_y / 20;
+
+                m_display_list.place_object(depth, character_id, trans_x_px, trans_y_px);
+            }
+        }
+
+        // TagRemoveObject2 (28)
+        if (tag_type == 28) {
+            if (tag_length >= 2) {
+                uint16_t depth = static_cast<uint16_t>(uncompressed_data[offset]) |
+                                (static_cast<uint16_t>(uncompressed_data[offset + 1]) << 8);
+                m_display_list.remove_object(depth);
             }
         }
 

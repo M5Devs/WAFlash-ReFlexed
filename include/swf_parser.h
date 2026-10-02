@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <string>
 #include <vector>
+#include "display_list.h"
 
 struct SWFHeader {
     char signature[3];
@@ -34,11 +35,14 @@ public:
     const std::vector<ABCTag>& get_abc_tags() const { return m_abc_tags; }
     const std::vector<size_t>& get_show_frame_positions() const { return m_show_frame_positions; }
     size_t get_show_frame_count() const { return m_show_frame_positions.size(); }
+    const DisplayList& get_display_list() const { return m_display_list; }
+    DisplayList& get_display_list() { return m_display_list; }
 
 private:
     SWFHeader m_header;
     std::vector<ABCTag> m_abc_tags;
     std::vector<size_t> m_show_frame_positions;
+    DisplayList m_display_list;
 };
 
 #endif // SWF_PARSER_H

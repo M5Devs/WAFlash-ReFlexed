@@ -9,6 +9,7 @@
 #include "swf_parser.h"
 #include "input_manager.h"
 #include "avm2_vm.h"
+#include "display_list.h"
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -221,6 +222,31 @@ void retro_run(void) {
 
     const SWFHeader& header = g_core.swf_parser.get_header();
     std::fill(g_core.m_framebuffer.begin(), g_core.m_framebuffer.end(), header.background_color_xrgb);
+
+    // Software Rasterizer: Iterate active stage objects in ascending depth order
+    const DisplayList& dl = g_core.swf_parser.get_display_list();
+    for (const auto& pair : dl.get_active_objects()) {
+        const DisplayObject& obj = pair.second;
+        const SWFShapeDefinition* shape = dl.find_shape(obj.character_id);
+        if (!shape) continue;
+
+        int32_t screen_x_min = shape->x_min + obj.transform_x;
+        int32_t screen_x_max = shape->x_max + obj.transform_x;
+        int32_t screen_y_min = shape->y_min + obj.transform_y;
+        int32_t screen_y_max = shape->y_max + obj.transform_y;
+
+        // Clip to stage boundaries
+        int32_t clip_x_start = std::max<int32_t>(0, screen_x_min);
+        int32_t clip_x_end   = std::min<int32_t>(static_cast<int32_t>(g_core.swf_width), screen_x_max);
+        int32_t clip_y_start = std::max<int32_t>(0, screen_y_min);
+        int32_t clip_y_end   = std::min<int32_t>(static_cast<int32_t>(g_core.swf_height), screen_y_max);
+
+        for (int32_t y = clip_y_start; y < clip_y_end; ++y) {
+            for (int32_t x = clip_x_start; x < clip_x_end; ++x) {
+                g_core.m_framebuffer[y * g_core.swf_width + x] = shape->fill_color_xrgb;
+            }
+        }
+    }
 
     if (g_core.video_cb && !g_core.m_framebuffer.empty()) {
         g_core.video_cb(g_core.m_framebuffer.data(), g_core.swf_width, g_core.swf_height, g_core.frame_buffer_pitch);
