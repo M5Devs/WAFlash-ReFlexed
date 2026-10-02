@@ -6,6 +6,7 @@
 
 #include "libretro.h"
 #include "retro_flash_memory.h"
+#include "swf_parser.h"
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -36,6 +37,11 @@ static struct {
     size_t                     frame_buffer_pitch;
     SimulatedAVM3MemoryMap     avm_memory;
     bool                       initialized;
+
+    uint32_t                   swf_width;
+    uint32_t                   swf_height;
+    float                      swf_fps;
+    SWFParser                  swf_parser;
 } g_core;
 
 void retro_set_environment(retro_environment_t cb) {
@@ -61,6 +67,10 @@ void retro_set_input_poll(retro_input_poll_t cb)       { g_core.input_poll_cb = 
 void retro_set_input_state(retro_input_state_t cb)     { g_core.input_state_cb = cb; }
 
 void retro_init(void) {
+    g_core.swf_width = CORE_DEFAULT_WIDTH;
+    g_core.swf_height = CORE_DEFAULT_HEIGHT;
+    g_core.swf_fps = CORE_DEFAULT_FPS;
+
     g_core.frame_buffer = (uint32_t*)malloc(CORE_DEFAULT_WIDTH * CORE_DEFAULT_HEIGHT * sizeof(uint32_t));
     g_core.frame_buffer_pitch = CORE_DEFAULT_WIDTH * sizeof(uint32_t);
     memset(&g_core.avm_memory, 0, sizeof(SimulatedAVM3MemoryMap));
@@ -94,13 +104,17 @@ void retro_get_system_info(struct retro_system_info *info) {
 
 void retro_get_system_av_info(struct retro_system_av_info *info) {
     memset(info, 0, sizeof(*info));
-    info->geometry.base_width   = CORE_DEFAULT_WIDTH;
-    info->geometry.base_height  = CORE_DEFAULT_HEIGHT;
+    uint32_t w = g_core.swf_width ? g_core.swf_width : CORE_DEFAULT_WIDTH;
+    uint32_t h = g_core.swf_height ? g_core.swf_height : CORE_DEFAULT_HEIGHT;
+    float fps = g_core.swf_fps > 0.0f ? g_core.swf_fps : CORE_DEFAULT_FPS;
+
+    info->geometry.base_width   = w;
+    info->geometry.base_height  = h;
     info->geometry.max_width    = 1920;
     info->geometry.max_height   = 1080;
-    info->geometry.aspect_ratio = (float)CORE_DEFAULT_WIDTH / (float)CORE_DEFAULT_HEIGHT;
+    info->geometry.aspect_ratio = (float)w / (float)h;
 
-    info->timing.fps         = CORE_DEFAULT_FPS;
+    info->timing.fps         = fps;
     info->timing.sample_rate = 44100.0;
 }
 
@@ -122,16 +136,36 @@ bool retro_load_game(const struct retro_game_info *game) {
     }
 
     if (g_core.log_cb) {
-        g_core.log_cb(RETRO_LOG_INFO, "[libretro-flash] Loading SWF payload (%size bytes).\n", game->size);
+        g_core.log_cb(RETRO_LOG_INFO, "[libretro-flash] Loading SWF payload (%zu bytes).\n", game->size);
     }
 
-    // 1. Flare parsing step:
-    // Flare::SWFReader reader(game->data, game->size);
-    // Flare::MovieClip root = reader.parse();
+    const uint8_t* swf_data = static_cast<const uint8_t*>(game->data);
+    if (!g_core.swf_parser.parse(swf_data, game->size)) {
+        if (g_core.log_cb) {
+            g_core.log_cb(RETRO_LOG_ERROR, "[libretro-flash] Failed to parse SWF payload.\n");
+        }
+        return false;
+    }
 
-    // 2. AVMPlus initialization step:
-    // avmplus::AvmCore* core = new avmplus::AvmCore();
-    // core->loadDoABC(reader.getAbcTags());
+    const SWFHeader& header = g_core.swf_parser.get_header();
+    g_core.swf_width = header.width_px ? header.width_px : CORE_DEFAULT_WIDTH;
+    g_core.swf_height = header.height_px ? header.height_px : CORE_DEFAULT_HEIGHT;
+    g_core.swf_fps = header.frame_rate > 0.0f ? header.frame_rate : CORE_DEFAULT_FPS;
+
+    // Reallocate frame buffer if dimensions change
+    if (g_core.frame_buffer) {
+        free(g_core.frame_buffer);
+    }
+    g_core.frame_buffer = (uint32_t*)malloc(g_core.swf_width * g_core.swf_height * sizeof(uint32_t));
+    g_core.frame_buffer_pitch = g_core.swf_width * sizeof(uint32_t);
+
+    if (g_core.log_cb) {
+        g_core.log_cb(RETRO_LOG_INFO,
+            "[libretro-flash] SWF Parsed: Version=%u, Sig=%c%c%c, Dim=%ux%u, FPS=%.2f, ABC Blocks=%zu\n",
+            header.version, header.signature[0], header.signature[1], header.signature[2],
+            g_core.swf_width, g_core.swf_height, g_core.swf_fps,
+            g_core.swf_parser.get_abc_tags().size());
+    }
 
     g_core.avm_memory.game_loaded = true;
     return true;
@@ -155,19 +189,16 @@ void retro_run(void) {
         g_core.input_poll_cb();
     }
 
-    // 1. Poll input states and dispatch to AVMPlus EventListeners
-    // 2. Advance AVMPlus bytecode execution tick (enterFrame)
-    // 3. Flare render frame pass into frame_buffer
-
     // Clear frame buffer to dark blue stub color
     if (g_core.frame_buffer) {
-        for (int i = 0; i < CORE_DEFAULT_WIDTH * CORE_DEFAULT_HEIGHT; ++i) {
+        uint32_t total_pixels = g_core.swf_width * g_core.swf_height;
+        for (uint32_t i = 0; i < total_pixels; ++i) {
             g_core.frame_buffer[i] = 0xFF1A1A2E;
         }
     }
 
     if (g_core.video_cb && g_core.frame_buffer) {
-        g_core.video_cb(g_core.frame_buffer, CORE_DEFAULT_WIDTH, CORE_DEFAULT_HEIGHT, g_core.frame_buffer_pitch);
+        g_core.video_cb(g_core.frame_buffer, g_core.swf_width, g_core.swf_height, g_core.frame_buffer_pitch);
     }
 }
 
@@ -201,7 +232,6 @@ void retro_cheat_set(unsigned index, bool enabled, const char *code) {
 void *retro_get_memory_data(unsigned id) {
     switch (id) {
         case RETRO_MEMORY_SYSTEM_RAM:
-            // Expose active state space for RetroAchievements hooks
             return &g_core.avm_memory.system_ram;
         default:
             return NULL;
