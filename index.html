@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>WAFlash Re:Flexed - Standalone Web Flash Player</title>
   
-  <!-- أداة فحص الموبايل عشان تشوف الأخطاء على تليفونك مباشرة -->
+  <!-- أداة فحص الموبايل -->
   <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
   <script>eruda.init();</script>
 
@@ -36,10 +36,17 @@
 
     #drop-ui {
       position: absolute;
-      z-index: 2;
+      z-index: 20;
       text-align: center;
       padding: 20px;
       cursor: pointer;
+      background: #111827;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
     }
     #drop-ui svg { width: 56px; height: 56px; fill: #38bdf8; margin-bottom: 12px; }
     #drop-ui h3 { font-size: 1.15rem; margin-bottom: 6px; color: #f1f5f9; }
@@ -92,8 +99,7 @@
       font-weight: 500;
     }
 
-    /* الـ ID المطلوب بالمللي للمحاكي */
-    #status {
+    #status, #waflashStatus {
       margin-top: 10px;
       font-size: 0.85rem;
       color: #38bdf8;
@@ -115,16 +121,16 @@
       <h3>Tap to Select .SWF File</h3>
       <p>Works with AS3 games & classic animations</p>
       <button class="btn-browse" onclick="document.getElementById('file-input').click()">Browse Files</button>
-      <!-- خلينا يقبل كل الملفات عشان أندرويد ميعصلجش -->
       <input type="file" id="file-input" accept=".swf, application/x-shockwave-flash, */*">
     </div>
 
     <div id="canvas-wrap">
-      <canvas id="canvas" width="800" height="600" tabindex="0"></canvas>
+      <canvas class="waflashCanvas" id="canvas" width="800" height="600" tabindex="0"></canvas>
     </div>
   </div>
 
   <div id="status"></div>
+  <div id="waflashStatus" style="display:none;"></div>
   <div id="spinner" style="display:none;"></div>
   <progress id="progress" style="display:none;" value="0" max="100"></progress>
   <div id="output" style="display:none;"></div>
@@ -148,7 +154,51 @@
     const btnRestart = document.getElementById('btn-restart');
     const btnFullscreen = document.getElementById('btn-fullscreen');
 
-    let blobUrl = null;
+    let swfArrayBuffer = null;
+    const VIRTUAL_SWF_URL = "./waflash-virtual-game.swf";
+
+    // 🚀 السحر البرمجي: اعتراض XHR & Fetch لتسليم الملف للـ C++ فوراً كـ 200 OK
+    const origXHR = window.XMLHttpRequest;
+    window.XMLHttpRequest = function() {
+      const xhr = new origXHR();
+      let isVirtual = false;
+      const origOpen = xhr.open;
+      xhr.open = function(method, url) {
+        if (url && (url.indexOf("waflash-virtual-game.swf") !== -1)) {
+          isVirtual = true;
+        }
+        return origOpen.apply(this, arguments);
+      };
+      const origSend = xhr.send;
+      xhr.send = function() {
+        if (isVirtual && swfArrayBuffer) {
+          setTimeout(() => {
+            Object.defineProperty(xhr, 'status', { value: 200, writable: false });
+            Object.defineProperty(xhr, 'statusText', { value: 'OK', writable: false });
+            Object.defineProperty(xhr, 'readyState', { value: 4, writable: false });
+            Object.defineProperty(xhr, 'response', { value: swfArrayBuffer, writable: false });
+            if (xhr.onload) xhr.onload();
+            if (xhr.onreadystatechange) xhr.onreadystatechange();
+          }, 10);
+          return;
+        }
+        return origSend.apply(this, arguments);
+      };
+      return xhr;
+    };
+
+    const origFetch = window.fetch;
+    window.fetch = function(input, init) {
+      const url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+      if (url && url.indexOf("waflash-virtual-game.swf") !== -1 && swfArrayBuffer) {
+        return Promise.resolve(new Response(swfArrayBuffer, {
+          status: 200,
+          statusText: 'OK',
+          headers: { 'Content-Type': 'application/x-shockwave-flash' }
+        }));
+      }
+      return origFetch.apply(this, arguments);
+    };
 
     function unlockAudioContext() {
       const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
@@ -163,9 +213,7 @@
 
     ['touchstart', 'touchend', 'click'].forEach(eventType => {
       box.addEventListener(eventType, unlockAudioContext, { passive: true });
-      if (canvas) {
-        canvas.addEventListener(eventType, unlockAudioContext, { passive: true });
-      }
+      if (canvas) canvas.addEventListener(eventType, unlockAudioContext, { passive: true });
     });
 
     fileInput.addEventListener('change', (e) => {
@@ -173,26 +221,35 @@
     });
 
     function handleFile(file) {
-      if (blobUrl) URL.revokeObjectURL(blobUrl);
-      blobUrl = URL.createObjectURL(file);
+      statusMsg.innerText = `Reading "${file.name}" (${(file.size / 1024).toFixed(1)} KB)...`;
+      
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        swfArrayBuffer = evt.target.result;
+        console.log("✅ SWF Buffer Ready in Memory:", swfArrayBuffer.byteLength, "bytes");
 
-      dropUi.style.display = 'none';
-      canvasWrap.style.zIndex = '10';
-      box.style.border = 'none';
-      btnRestart.style.display = 'inline-block';
-      statusMsg.innerText = `Loading "${file.name}"...`;
+        dropUi.style.display = 'none';
+        canvasWrap.style.zIndex = '10';
+        box.style.border = 'none';
+        btnRestart.style.display = 'inline-block';
 
-      if (canvas) {
-        canvas.focus();
-      }
-      unlockAudioContext();
+        if (canvas) canvas.focus();
+        unlockAudioContext();
 
-      try {
-        createWaflash(blobUrl);
-      } catch (err) {
-        console.error(err);
-        statusMsg.innerText = 'Error: ' + err.message;
-      }
+        try {
+          // بنمرر الرابط الافتراضي اللي بينتهي بـ .swf ومضمون 100%
+          createWaflash(VIRTUAL_SWF_URL);
+        } catch (err) {
+          console.error(err);
+          statusMsg.innerText = 'Error: ' + err.message;
+        }
+      };
+      
+      reader.onerror = function() {
+        alert("Failed to read file from storage!");
+      };
+
+      reader.readAsArrayBuffer(file);
     }
 
     btnFullscreen.addEventListener('click', () => {
