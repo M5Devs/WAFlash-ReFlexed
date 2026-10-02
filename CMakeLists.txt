@@ -32,7 +32,7 @@ endif()
 enable_testing()
 
 # Target 1: Libretro Core Shared Library
-add_library(libretro_flash SHARED src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp)
+add_library(libretro_flash SHARED src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp)
 
 set_target_properties(libretro_flash PROPERTIES
     OUTPUT_NAME "libretro_flash"
@@ -50,7 +50,7 @@ else()
 endif()
 
 # Target 2: Unit Test Executable - Memory Map
-add_executable(test_memory_map tests/test_memory_map.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp)
+add_executable(test_memory_map tests/test_memory_map.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp)
 
 target_include_directories(test_memory_map PRIVATE include)
 target_link_libraries(test_memory_map PRIVATE ZLIB::ZLIB)
@@ -91,7 +91,7 @@ endif()
 add_test(NAME test_abc_parser COMMAND test_abc_parser)
 
 # Target 5: Unit Test Executable - Video Frame
-add_executable(test_video_frame tests/test_video_frame.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp)
+add_executable(test_video_frame tests/test_video_frame.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp)
 
 target_include_directories(test_video_frame PRIVATE include)
 target_link_libraries(test_video_frame PRIVATE ZLIB::ZLIB)
@@ -118,7 +118,7 @@ endif()
 add_test(NAME test_input COMMAND test_input)
 
 # Target 7: Unit Test Executable - Timeline Stepper
-add_executable(test_timeline tests/test_timeline.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp)
+add_executable(test_timeline tests/test_timeline.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp)
 
 target_include_directories(test_timeline PRIVATE include)
 target_link_libraries(test_timeline PRIVATE ZLIB::ZLIB)
@@ -145,7 +145,7 @@ endif()
 add_test(NAME test_avm2_vm COMMAND test_avm2_vm)
 
 # Target 9: Unit Test Executable - DisplayList
-add_executable(test_display_list tests/test_display_list.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp)
+add_executable(test_display_list tests/test_display_list.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp)
 
 target_include_directories(test_display_list PRIVATE include)
 target_link_libraries(test_display_list PRIVATE ZLIB::ZLIB)
@@ -157,3 +157,16 @@ else()
 endif()
 
 add_test(NAME test_display_list COMMAND test_display_list)
+
+# Target 10: Unit Test Executable - Audio Subsystem
+add_executable(test_audio tests/test_audio.cpp src/audio_mixer.cpp)
+
+target_include_directories(test_audio PRIVATE include)
+
+if(MSVC)
+    target_compile_options(test_audio PRIVATE /W4 /EHs-c- /GR-)
+else()
+    target_compile_options(test_audio PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
+endif()
+
+add_test(NAME test_audio COMMAND test_audio)
