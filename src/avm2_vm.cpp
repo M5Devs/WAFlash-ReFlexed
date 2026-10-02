@@ -52,6 +52,79 @@ AVM2Value AVM2VM::get_local(size_t index) const {
     return AVM2Value::make_undefined();
 }
 
+static SerializedAVM2Value convert_to_serialized(const AVM2Value& val) {
+    SerializedAVM2Value s{};
+    s.type = static_cast<SerializedValueType>(val.type);
+    switch (val.type) {
+        case AVM2ValueType::Boolean:
+            s.bool_val = val.bool_val;
+            break;
+        case AVM2ValueType::Integer:
+            s.int_val = val.int_val;
+            break;
+        case AVM2ValueType::Number:
+            s.num_val = val.num_val;
+            break;
+        case AVM2ValueType::String:
+            std::strncpy(s.str_val, val.str_val.c_str(), sizeof(s.str_val) - 1);
+            s.str_val[sizeof(s.str_val) - 1] = '\0';
+            break;
+        default:
+            break;
+    }
+    return s;
+}
+
+static AVM2Value convert_from_serialized(const SerializedAVM2Value& s) {
+    AVM2Value val;
+    val.type = static_cast<AVM2ValueType>(s.type);
+    switch (val.type) {
+        case AVM2ValueType::Boolean:
+            val.bool_val = s.bool_val;
+            break;
+        case AVM2ValueType::Integer:
+            val.int_val = s.int_val;
+            break;
+        case AVM2ValueType::Number:
+            val.num_val = s.num_val;
+            break;
+        case AVM2ValueType::String:
+            val.str_val = std::string(s.str_val);
+            break;
+        default:
+            break;
+    }
+    return val;
+}
+
+void AVM2VM::export_state(SerializedAVM2State& out_state) const {
+    std::memset(&out_state, 0, sizeof(SerializedAVM2State));
+
+    out_state.stack_count = static_cast<uint32_t>(std::min(m_stack.size(), static_cast<size_t>(MAX_AVM2_STACK_SIZE)));
+    for (size_t i = 0; i < out_state.stack_count; ++i) {
+        out_state.stack[i] = convert_to_serialized(m_stack[i]);
+    }
+
+    out_state.locals_count = static_cast<uint32_t>(std::min(m_locals.size(), static_cast<size_t>(MAX_AVM2_LOCALS_SIZE)));
+    for (size_t i = 0; i < out_state.locals_count; ++i) {
+        out_state.locals[i] = convert_to_serialized(m_locals[i]);
+    }
+}
+
+void AVM2VM::import_state(const SerializedAVM2State& in_state) {
+    m_stack.clear();
+    uint32_t s_count = std::min(in_state.stack_count, static_cast<uint32_t>(MAX_AVM2_STACK_SIZE));
+    for (uint32_t i = 0; i < s_count; ++i) {
+        m_stack.push_back(convert_from_serialized(in_state.stack[i]));
+    }
+
+    m_locals.clear();
+    uint32_t l_count = std::min(in_state.locals_count, static_cast<uint32_t>(MAX_AVM2_LOCALS_SIZE));
+    for (uint32_t i = 0; i < l_count; ++i) {
+        m_locals.push_back(convert_from_serialized(in_state.locals[i]));
+    }
+}
+
 void AVM2VM::sync_to_retro_memory(RetroFlashMemoryMap& memory_map, uint32_t score, uint32_t hp, uint32_t lives, uint32_t stage) {
     memory_map.player_score = score;
     memory_map.player_hp = hp;

@@ -170,3 +170,17 @@ else()
 endif()
 
 add_test(NAME test_audio COMMAND test_audio)
+
+# Target 11: Unit Test Executable - Serialization
+add_executable(test_serialization tests/test_serialization.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp)
+
+target_include_directories(test_serialization PRIVATE include)
+target_link_libraries(test_serialization PRIVATE ZLIB::ZLIB)
+
+if(MSVC)
+    target_compile_options(test_serialization PRIVATE /W4 /EHs-c- /GR-)
+else()
+    target_compile_options(test_serialization PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
+endif()
+
+add_test(NAME test_serialization COMMAND test_serialization)

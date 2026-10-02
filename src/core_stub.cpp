@@ -11,6 +11,7 @@
 #include "avm2_vm.h"
 #include "display_list.h"
 #include "audio_mixer.h"
+#include "serialization.h"
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -27,6 +28,66 @@
 struct SimulatedAVM3MemoryMap {
     RetroFlashMemoryMap system_ram; // Linear state space exposed to RETRO_MEMORY_SYSTEM_RAM
     bool                game_loaded;
+};
+
+// Core Options configuration settings
+static struct {
+    unsigned resolution_scale; // 1, 2, or 4
+    unsigned framerate_mode;   // 0: Auto, 1: 30 FPS, 2: 60 FPS
+    bool ra_sync_enabled;      // RetroAchievements Memory Mirroring
+} g_opts = { 1, 0, true };
+
+// Core Options Definition (V2 & V1 Fallback)
+static struct retro_core_option_v2_definition g_core_options_v2[] = {
+    {
+        "waflash_resolution_scale",
+        "Internal Resolution Scale",
+        NULL,
+        "Select internal render scale multiplier.",
+        NULL,
+        {
+            { "1x (Original)", "1x (Original)" },
+            { "2x (HD)", "2x (HD)" },
+            { "4x (Ultra HD)", "4x (Ultra HD)" },
+            { NULL, NULL }
+        },
+        "1x (Original)"
+    },
+    {
+        "waflash_framerate_mode",
+        "Framerate Mode",
+        NULL,
+        "Select timeline frame rate operation mode.",
+        NULL,
+        {
+            { "Auto (Match SWF)", "Auto (Match SWF)" },
+            { "Fixed 30 FPS", "Fixed 30 FPS" },
+            { "Fixed 60 FPS", "Fixed 60 FPS" },
+            { NULL, NULL }
+        },
+        "Auto (Match SWF)"
+    },
+    {
+        "waflash_retroachievements_sync",
+        "RetroAchievements Memory Mirroring",
+        NULL,
+        "Enable or disable memory mapping synchronization for RetroAchievements.",
+        NULL,
+        {
+            { "Enabled", "Enabled" },
+            { "Disabled", "Disabled" },
+            { NULL, NULL }
+        },
+        "Enabled"
+    },
+    { NULL, NULL, NULL, NULL, NULL, { { NULL, NULL } }, NULL }
+};
+
+static struct retro_variable g_core_variables_v1[] = {
+    { "waflash_resolution_scale", "Internal Resolution Scale; 1x (Original)|2x (HD)|4x (Ultra HD)" },
+    { "waflash_framerate_mode", "Framerate Mode; Auto (Match SWF)|Fixed 30 FPS|Fixed 60 FPS" },
+    { "waflash_retroachievements_sync", "RetroAchievements Memory Mirroring; Enabled|Disabled" },
+    { NULL, NULL }
 };
 
 // Global Core State
@@ -55,6 +116,9 @@ static struct {
     uint32_t                   m_total_frames;
 } g_core;
 
+static void update_core_options(void);
+static void render_current_video_frame(void);
+
 void retro_set_environment(retro_environment_t cb) {
     g_core.env_cb = cb;
     if (cb) {
@@ -63,11 +127,56 @@ void retro_set_environment(retro_environment_t cb) {
             g_core.log_cb = log_cb.log;
         }
 
+        struct retro_core_options_v2 core_options_v2;
+        core_options_v2.definitions = g_core_options_v2;
+        if (!cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, &core_options_v2)) {
+            cb(RETRO_ENVIRONMENT_SET_VARIABLES, g_core_variables_v1);
+        }
+
         enum retro_pixel_format fmt = RETRO_PIXEL_FORMAT_XRGB8888;
         cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt);
 
         bool support_achievements = true;
         cb(RETRO_ENVIRONMENT_SET_SUPPORT_ACHIEVEMENTS, &support_achievements);
+
+        update_core_options();
+    }
+}
+
+static void update_core_options(void) {
+    if (!g_core.env_cb) return;
+
+    struct retro_variable var;
+
+    var.key = "waflash_resolution_scale";
+    if (g_core.env_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value) {
+        if (strcmp(var.value, "2x (HD)") == 0) {
+            g_opts.resolution_scale = 2;
+        } else if (strcmp(var.value, "4x (Ultra HD)") == 0) {
+            g_opts.resolution_scale = 4;
+        } else {
+            g_opts.resolution_scale = 1;
+        }
+    }
+
+    var.key = "waflash_framerate_mode";
+    if (g_core.env_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value) {
+        if (strcmp(var.value, "Fixed 30 FPS") == 0) {
+            g_opts.framerate_mode = 1;
+        } else if (strcmp(var.value, "Fixed 60 FPS") == 0) {
+            g_opts.framerate_mode = 2;
+        } else {
+            g_opts.framerate_mode = 0; // Auto
+        }
+    }
+
+    var.key = "waflash_retroachievements_sync";
+    if (g_core.env_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value) {
+        if (strcmp(var.value, "Disabled") == 0) {
+            g_opts.ra_sync_enabled = false;
+        } else {
+            g_opts.ra_sync_enabled = true;
+        }
     }
 }
 
@@ -123,10 +232,16 @@ void retro_get_system_av_info(struct retro_system_av_info *info) {
     uint32_t h = g_core.swf_height ? g_core.swf_height : CORE_DEFAULT_HEIGHT;
     float fps = g_core.swf_fps > 0.0f ? g_core.swf_fps : CORE_DEFAULT_FPS;
 
-    info->geometry.base_width   = w;
-    info->geometry.base_height  = h;
-    info->geometry.max_width    = 1920;
-    info->geometry.max_height   = 1080;
+    if (g_opts.framerate_mode == 1) {
+        fps = 30.0f;
+    } else if (g_opts.framerate_mode == 2) {
+        fps = 60.0f;
+    }
+
+    info->geometry.base_width   = w * g_opts.resolution_scale;
+    info->geometry.base_height  = h * g_opts.resolution_scale;
+    info->geometry.max_width    = 1920 * 4;
+    info->geometry.max_height   = 1080 * 4;
     info->geometry.aspect_ratio = (float)w / (float)h;
 
     info->timing.fps         = fps;
@@ -215,19 +330,7 @@ void retro_unload_game(void) {
     g_core.audio_mixer.reset();
 }
 
-void retro_run(void) {
-    if (!g_core.avm_memory.game_loaded) return;
-
-    if (g_core.input_poll_cb) {
-        g_core.input_poll_cb();
-    }
-
-    g_core.input_manager.poll_inputs(g_core.input_state_cb, g_core.swf_width, g_core.swf_height);
-
-    if (g_core.m_total_frames > 0) {
-        g_core.m_current_frame = (g_core.m_current_frame + 1) % g_core.m_total_frames;
-    }
-
+static void render_current_video_frame(void) {
     const SWFHeader& header = g_core.swf_parser.get_header();
     std::fill(g_core.m_framebuffer.begin(), g_core.m_framebuffer.end(), header.background_color_xrgb);
 
@@ -259,6 +362,27 @@ void retro_run(void) {
     if (g_core.video_cb && !g_core.m_framebuffer.empty()) {
         g_core.video_cb(g_core.m_framebuffer.data(), g_core.swf_width, g_core.swf_height, g_core.frame_buffer_pitch);
     }
+}
+
+void retro_run(void) {
+    if (!g_core.avm_memory.game_loaded) return;
+
+    bool updated = false;
+    if (g_core.env_cb && g_core.env_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated) && updated) {
+        update_core_options();
+    }
+
+    if (g_core.input_poll_cb) {
+        g_core.input_poll_cb();
+    }
+
+    g_core.input_manager.poll_inputs(g_core.input_state_cb, g_core.swf_width, g_core.swf_height);
+
+    if (g_core.m_total_frames > 0) {
+        g_core.m_current_frame = (g_core.m_current_frame + 1) % g_core.m_total_frames;
+    }
+
+    render_current_video_frame();
 
     if (g_core.audio_batch_cb) {
         size_t frames = static_cast<size_t>(44100.0f / (g_core.swf_fps > 0.0f ? g_core.swf_fps : 60.0f));
@@ -274,18 +398,45 @@ unsigned retro_get_region(void) {
 }
 
 size_t retro_serialize_size(void) {
-    return sizeof(SimulatedAVM3MemoryMap);
+    return sizeof(CoreStatePayload);
 }
 
 bool retro_serialize(void *data, size_t size) {
-    if (size < sizeof(SimulatedAVM3MemoryMap)) return false;
-    memcpy(data, &g_core.avm_memory, sizeof(SimulatedAVM3MemoryMap));
+    if (!data || size < sizeof(CoreStatePayload)) return false;
+
+    CoreStatePayload* payload = static_cast<CoreStatePayload*>(data);
+    std::memset(payload, 0, sizeof(CoreStatePayload));
+
+    payload->header.magic = WAFLASH_SERIALIZE_MAGIC;
+    payload->header.version = WAFLASH_SERIALIZE_VERSION;
+    payload->header.current_frame = g_core.m_current_frame;
+
+    std::memcpy(&payload->memory_map, &g_core.avm_memory.system_ram, sizeof(RetroFlashMemoryMap));
+
+    g_core.avm2_vm.export_state(payload->avm2_state);
+    g_core.swf_parser.get_display_list().export_state(payload->display_list_state);
+
     return true;
 }
 
 bool retro_unserialize(const void *data, size_t size) {
-    if (size < sizeof(SimulatedAVM3MemoryMap)) return false;
-    memcpy(&g_core.avm_memory, data, sizeof(SimulatedAVM3MemoryMap));
+    if (!data || size < sizeof(CoreStatePayload)) return false;
+
+    const CoreStatePayload* payload = static_cast<const CoreStatePayload*>(data);
+
+    if (payload->header.magic != WAFLASH_SERIALIZE_MAGIC || payload->header.version != WAFLASH_SERIALIZE_VERSION) {
+        return false;
+    }
+
+    g_core.m_current_frame = payload->header.current_frame;
+    std::memcpy(&g_core.avm_memory.system_ram, &payload->memory_map, sizeof(RetroFlashMemoryMap));
+
+    g_core.avm2_vm.import_state(payload->avm2_state);
+    g_core.swf_parser.get_display_list().import_state(payload->display_list_state);
+
+    // Trigger immediate video refresh to render the restored state
+    render_current_video_frame();
+
     return true;
 }
 

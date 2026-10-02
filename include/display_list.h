@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <unordered_map>
 #include <map>
+#include "serialization.h"
 
 struct SWFShapeDefinition {
     uint16_t character_id{0};
@@ -30,6 +31,9 @@ public:
     void place_object(uint16_t depth, uint16_t character_id, int32_t x, int32_t y);
     void remove_object(uint16_t depth);
     void clear();
+
+    void export_state(SerializedDisplayListState& out_state) const;
+    void import_state(const SerializedDisplayListState& in_state);
 
     const SWFShapeDefinition* find_shape(uint16_t character_id) const;
     const std::map<uint16_t, DisplayObject>& get_active_objects() const { return m_stage_objects; }
