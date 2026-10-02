@@ -18,4 +18,4 @@ Then open `http://localhost:8000` in your web browser.
 
 ## 📜 Credits
 - Core WAFlash engine compiled by [vidkidz](https://github.com/vidkidz) using Adobe's AVMPlus & Crossbridge C++ codebase.
-- Re-architected and maintained by [ClausValcaTD](https://github.com/ClausValcaTD).
+- Re-architected and maintained by [M5 Dev](https://github.com/M5Devs).
