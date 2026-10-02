@@ -14,6 +14,7 @@ struct SWFHeader {
     uint32_t height_px;
     float frame_rate;
     uint16_t frame_count;
+    uint32_t background_color_xrgb;
 };
 
 struct ABCTag {

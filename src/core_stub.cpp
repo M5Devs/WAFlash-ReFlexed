@@ -11,6 +11,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
+#include <vector>
 
 // Standard frame geometry defaults
 #define CORE_DEFAULT_WIDTH  800
@@ -33,7 +35,7 @@ static struct {
     retro_input_state_t        input_state_cb;
     retro_log_printf_t         log_cb;
 
-    uint32_t*                  frame_buffer;
+    std::vector<uint32_t>      m_framebuffer;
     size_t                     frame_buffer_pitch;
     SimulatedAVM3MemoryMap     avm_memory;
     bool                       initialized;
@@ -71,7 +73,7 @@ void retro_init(void) {
     g_core.swf_height = CORE_DEFAULT_HEIGHT;
     g_core.swf_fps = CORE_DEFAULT_FPS;
 
-    g_core.frame_buffer = (uint32_t*)malloc(CORE_DEFAULT_WIDTH * CORE_DEFAULT_HEIGHT * sizeof(uint32_t));
+    g_core.m_framebuffer.resize(CORE_DEFAULT_WIDTH * CORE_DEFAULT_HEIGHT, 0x00FFFFFF);
     g_core.frame_buffer_pitch = CORE_DEFAULT_WIDTH * sizeof(uint32_t);
     memset(&g_core.avm_memory, 0, sizeof(SimulatedAVM3MemoryMap));
     g_core.initialized = true;
@@ -82,10 +84,8 @@ void retro_init(void) {
 }
 
 void retro_deinit(void) {
-    if (g_core.frame_buffer) {
-        free(g_core.frame_buffer);
-        g_core.frame_buffer = NULL;
-    }
+    g_core.m_framebuffer.clear();
+    g_core.m_framebuffer.shrink_to_fit();
     g_core.initialized = false;
 }
 
@@ -152,11 +152,13 @@ bool retro_load_game(const struct retro_game_info *game) {
     g_core.swf_height = header.height_px ? header.height_px : CORE_DEFAULT_HEIGHT;
     g_core.swf_fps = header.frame_rate > 0.0f ? header.frame_rate : CORE_DEFAULT_FPS;
 
-    // Reallocate frame buffer if dimensions change
-    if (g_core.frame_buffer) {
-        free(g_core.frame_buffer);
+    enum retro_pixel_format fmt = RETRO_PIXEL_FORMAT_XRGB8888;
+    if (g_core.env_cb) {
+        g_core.env_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt);
     }
-    g_core.frame_buffer = (uint32_t*)malloc(g_core.swf_width * g_core.swf_height * sizeof(uint32_t));
+
+    // Reallocate frame buffer if dimensions change and clear with stage background color
+    g_core.m_framebuffer.assign(g_core.swf_width * g_core.swf_height, header.background_color_xrgb);
     g_core.frame_buffer_pitch = g_core.swf_width * sizeof(uint32_t);
 
     if (g_core.log_cb) {
@@ -189,16 +191,18 @@ void retro_run(void) {
         g_core.input_poll_cb();
     }
 
-    // Clear frame buffer to dark blue stub color
-    if (g_core.frame_buffer) {
-        uint32_t total_pixels = g_core.swf_width * g_core.swf_height;
-        for (uint32_t i = 0; i < total_pixels; ++i) {
-            g_core.frame_buffer[i] = 0xFF1A1A2E;
-        }
+    const SWFHeader& header = g_core.swf_parser.get_header();
+    std::fill(g_core.m_framebuffer.begin(), g_core.m_framebuffer.end(), header.background_color_xrgb);
+
+    if (g_core.video_cb && !g_core.m_framebuffer.empty()) {
+        g_core.video_cb(g_core.m_framebuffer.data(), g_core.swf_width, g_core.swf_height, g_core.frame_buffer_pitch);
     }
 
-    if (g_core.video_cb && g_core.frame_buffer) {
-        g_core.video_cb(g_core.frame_buffer, g_core.swf_width, g_core.swf_height, g_core.frame_buffer_pitch);
+    if (g_core.audio_batch_cb) {
+        size_t frames = static_cast<size_t>(44100.0f / (g_core.swf_fps > 0.0f ? g_core.swf_fps : 60.0f));
+        if (frames > 1024) frames = 1024;
+        int16_t silence[2048] = {0};
+        g_core.audio_batch_cb(silence, frames);
     }
 }
 
