@@ -8,6 +8,7 @@
 #include "retro_flash_memory.h"
 #include "swf_parser.h"
 #include "input_manager.h"
+#include "avm2_vm.h"
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -46,6 +47,7 @@ static struct {
     float                      swf_fps;
     SWFParser                  swf_parser;
     InputManager               input_manager;
+    AVM2VM                     avm2_vm;
     uint32_t                   m_current_frame;
     uint32_t                   m_total_frames;
 } g_core;
@@ -82,6 +84,8 @@ void retro_init(void) {
     g_core.m_framebuffer.resize(CORE_DEFAULT_WIDTH * CORE_DEFAULT_HEIGHT, 0x00FFFFFF);
     g_core.frame_buffer_pitch = CORE_DEFAULT_WIDTH * sizeof(uint32_t);
     memset(&g_core.avm_memory, 0, sizeof(SimulatedAVM3MemoryMap));
+    g_core.avm2_vm.reset();
+    g_core.avm2_vm.set_retro_memory(&g_core.avm_memory.system_ram);
     g_core.initialized = true;
 
     if (g_core.log_cb) {
@@ -132,6 +136,7 @@ void retro_set_controller_port_device(unsigned port, unsigned device) {
 void retro_reset(void) {
     // Reset AVMPlus Virtual Machine and Flare display list to initial frame
     g_core.m_current_frame = 0;
+    g_core.avm2_vm.reset();
     if (g_core.log_cb) {
         g_core.log_cb(RETRO_LOG_INFO, "[libretro-flash] Resetting AVMPlus runtime and Flare timeline to frame 0.\n");
     }
@@ -173,6 +178,9 @@ bool retro_load_game(const struct retro_game_info *game) {
     g_core.m_framebuffer.assign(g_core.swf_width * g_core.swf_height, header.background_color_xrgb);
     g_core.frame_buffer_pitch = g_core.swf_width * sizeof(uint32_t);
 
+    g_core.avm2_vm.reset();
+    g_core.avm2_vm.set_retro_memory(&g_core.avm_memory.system_ram);
+
     if (g_core.log_cb) {
         g_core.log_cb(RETRO_LOG_INFO,
             "[libretro-flash] SWF Parsed: Version=%u, Sig=%c%c%c, Dim=%ux%u, FPS=%.2f, ABC Blocks=%zu, Total Frames=%u\n",
@@ -195,6 +203,7 @@ bool retro_load_game_special(unsigned game_type, const struct retro_game_info *i
 void retro_unload_game(void) {
     g_core.avm_memory.game_loaded = false;
     g_core.m_current_frame = 0;
+    g_core.avm2_vm.reset();
 }
 
 void retro_run(void) {
