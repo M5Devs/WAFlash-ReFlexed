@@ -57,7 +57,8 @@ if(EMSCRIPTEN)
         "-sEXPORT_NAME=\"createWAFlashCore\""
         "-sALLOW_MEMORY_GROWTH=1"
         "-sUSE_ZLIB=1"
-        "-sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue','HEAPU8','HEAPU32','_malloc','_free']"
+        "-sEXPORTED_FUNCTIONS=['_malloc','_free']"
+        "-sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue','HEAPU8','HEAPU32']"
         "-O3"
     )
 endif()
