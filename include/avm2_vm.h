@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include "abc_parser.h"
 #include "retro_flash_memory.h"
+#include "serialization.h"
 
 enum class AVM2ValueType {
     Undefined,
@@ -110,6 +111,9 @@ public:
 
     void set_local(size_t index, const AVM2Value& val);
     AVM2Value get_local(size_t index) const;
+
+    void export_state(SerializedAVM2State& out_state) const;
+    void import_state(const SerializedAVM2State& in_state);
 
     void sync_to_retro_memory(RetroFlashMemoryMap& memory_map, uint32_t score, uint32_t hp, uint32_t lives, uint32_t stage);
 

@@ -83,6 +83,7 @@ extern "C" {
 #define RETRO_ENVIRONMENT_GET_USERNAME                   40
 #define RETRO_ENVIRONMENT_GET_LANGUAGE                   41
 #define RETRO_ENVIRONMENT_SET_SUPPORT_ACHIEVEMENTS       42
+#define RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2            67
 
 enum retro_pixel_format {
    RETRO_PIXEL_FORMAT_0RGB1555 = 0,
@@ -132,6 +133,27 @@ struct retro_game_info {
 struct retro_variable {
    const char *key;
    const char *value;
+};
+
+#define RETRO_NUM_CORE_OPTION_VALUES_MAX 128
+
+struct retro_core_option_value {
+   const char *value;
+   const char *label;
+};
+
+struct retro_core_option_v2_definition {
+   const char *key;
+   const char *desc;
+   const char *desc_categorized;
+   const char *info;
+   const char *category_key;
+   struct retro_core_option_value values[RETRO_NUM_CORE_OPTION_VALUES_MAX];
+   const char *default_value;
+};
+
+struct retro_core_options_v2 {
+   struct retro_core_option_v2_definition *definitions;
 };
 
 enum retro_log_level {
