@@ -5,8 +5,28 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Find ZLIB dependency
-find_package(ZLIB REQUIRED)
+# Find ZLIB dependency or fallback to FetchContent
+find_package(ZLIB QUIET)
+
+if(NOT ZLIB_FOUND)
+    include(FetchContent)
+    message(STATUS "ZLIB not found on system. Fetching zlib via FetchContent...")
+    FetchContent_Declare(
+        zlib
+        GIT_REPOSITORY https://github.com/madler/zlib.git
+        GIT_TAG        v1.3.1
+    )
+    # Disable zlib examples and tests
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    set(ZLIB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(zlib)
+
+    if(TARGET zlibstatic AND NOT TARGET ZLIB::ZLIB)
+        add_library(ZLIB::ZLIB ALIAS zlibstatic)
+    elseif(TARGET zlib AND NOT TARGET ZLIB::ZLIB)
+        add_library(ZLIB::ZLIB ALIAS zlib)
+    endif()
+endif()
 
 # Enable testing
 enable_testing()
