@@ -64,6 +64,7 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
     }
 
     m_abc_tags.clear();
+    m_show_frame_positions.clear();
     std::memset(&m_header, 0, sizeof(SWFHeader));
     m_header.background_color_xrgb = 0x00FFFFFF;
 
@@ -138,6 +139,7 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
 
     // Scan tags
     while (offset + 2 <= uncompressed_data.size()) {
+        size_t tag_start_offset = offset;
         uint16_t tag_code_and_length = static_cast<uint16_t>(uncompressed_data[offset]) |
                                        (static_cast<uint16_t>(uncompressed_data[offset + 1]) << 8);
         offset += 2;
@@ -156,6 +158,11 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
 
         if (offset + tag_length > uncompressed_data.size()) {
             break;
+        }
+
+        // TagShowFrame (1)
+        if (tag_type == 1) {
+            m_show_frame_positions.push_back(tag_start_offset);
         }
 
         // TagSetBackgroundColor (9)

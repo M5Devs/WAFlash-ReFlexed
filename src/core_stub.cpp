@@ -7,6 +7,7 @@
 #include "libretro.h"
 #include "retro_flash_memory.h"
 #include "swf_parser.h"
+#include "input_manager.h"
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -44,6 +45,9 @@ static struct {
     uint32_t                   swf_height;
     float                      swf_fps;
     SWFParser                  swf_parser;
+    InputManager               input_manager;
+    uint32_t                   m_current_frame;
+    uint32_t                   m_total_frames;
 } g_core;
 
 void retro_set_environment(retro_environment_t cb) {
@@ -72,6 +76,8 @@ void retro_init(void) {
     g_core.swf_width = CORE_DEFAULT_WIDTH;
     g_core.swf_height = CORE_DEFAULT_HEIGHT;
     g_core.swf_fps = CORE_DEFAULT_FPS;
+    g_core.m_current_frame = 0;
+    g_core.m_total_frames = 1;
 
     g_core.m_framebuffer.resize(CORE_DEFAULT_WIDTH * CORE_DEFAULT_HEIGHT, 0x00FFFFFF);
     g_core.frame_buffer_pitch = CORE_DEFAULT_WIDTH * sizeof(uint32_t);
@@ -125,8 +131,9 @@ void retro_set_controller_port_device(unsigned port, unsigned device) {
 
 void retro_reset(void) {
     // Reset AVMPlus Virtual Machine and Flare display list to initial frame
+    g_core.m_current_frame = 0;
     if (g_core.log_cb) {
-        g_core.log_cb(RETRO_LOG_INFO, "[libretro-flash] Resetting AVMPlus runtime and Flare timeline.\n");
+        g_core.log_cb(RETRO_LOG_INFO, "[libretro-flash] Resetting AVMPlus runtime and Flare timeline to frame 0.\n");
     }
 }
 
@@ -152,6 +159,11 @@ bool retro_load_game(const struct retro_game_info *game) {
     g_core.swf_height = header.height_px ? header.height_px : CORE_DEFAULT_HEIGHT;
     g_core.swf_fps = header.frame_rate > 0.0f ? header.frame_rate : CORE_DEFAULT_FPS;
 
+    g_core.m_current_frame = 0;
+    size_t show_frame_count = g_core.swf_parser.get_show_frame_count();
+    g_core.m_total_frames = show_frame_count > 0 ? static_cast<uint32_t>(show_frame_count) :
+                            (header.frame_count > 0 ? header.frame_count : 1);
+
     enum retro_pixel_format fmt = RETRO_PIXEL_FORMAT_XRGB8888;
     if (g_core.env_cb) {
         g_core.env_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt);
@@ -163,10 +175,10 @@ bool retro_load_game(const struct retro_game_info *game) {
 
     if (g_core.log_cb) {
         g_core.log_cb(RETRO_LOG_INFO,
-            "[libretro-flash] SWF Parsed: Version=%u, Sig=%c%c%c, Dim=%ux%u, FPS=%.2f, ABC Blocks=%zu\n",
+            "[libretro-flash] SWF Parsed: Version=%u, Sig=%c%c%c, Dim=%ux%u, FPS=%.2f, ABC Blocks=%zu, Total Frames=%u\n",
             header.version, header.signature[0], header.signature[1], header.signature[2],
             g_core.swf_width, g_core.swf_height, g_core.swf_fps,
-            g_core.swf_parser.get_abc_tags().size());
+            g_core.swf_parser.get_abc_tags().size(), g_core.m_total_frames);
     }
 
     g_core.avm_memory.game_loaded = true;
@@ -182,6 +194,7 @@ bool retro_load_game_special(unsigned game_type, const struct retro_game_info *i
 
 void retro_unload_game(void) {
     g_core.avm_memory.game_loaded = false;
+    g_core.m_current_frame = 0;
 }
 
 void retro_run(void) {
@@ -189,6 +202,12 @@ void retro_run(void) {
 
     if (g_core.input_poll_cb) {
         g_core.input_poll_cb();
+    }
+
+    g_core.input_manager.poll_inputs(g_core.input_state_cb, g_core.swf_width, g_core.swf_height);
+
+    if (g_core.m_total_frames > 0) {
+        g_core.m_current_frame = (g_core.m_current_frame + 1) % g_core.m_total_frames;
     }
 
     const SWFHeader& header = g_core.swf_parser.get_header();
