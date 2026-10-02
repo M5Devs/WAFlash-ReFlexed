@@ -1,0 +1,22 @@
+# Software Information
+display_name = "Flash (WAFlash Re:Flexed)"
+authors = "vidkidz|M5Devs"
+supported_extensions = "swf"
+corename = "WAFlash Re:Flexed"
+manufacturer = "Adobe"
+systemname = "Adobe Flash"
+systemid = "adobe_flash"
+license = "GPLv3"
+permissions = ""
+display_version = "v0.2.0"
+categories = "Emulator"
+
+# Hardware / Emulation Features
+database = "Adobe - Flash"
+savestate = "true"
+savestate_features = "deterministic"
+cheevos = "true"
+cheevos_leaderboards_enable = "true"
+libretro_saves = "true"
+core_options = "true"
+notes = "High-compatibility native Flash player engine with ActionScript 3 and RetroAchievements support."

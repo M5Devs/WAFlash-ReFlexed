@@ -13,7 +13,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            artifact_name: waflash_libretro-linux-x64
+            binary_path: build/libretro_flash.so
+          - os: windows-latest
+            artifact_name: waflash_libretro-windows-x64
+            binary_path: build/Release/libretro_flash.dll
+          - os: macos-latest
+            artifact_name: waflash_libretro-macos-x64
+            binary_path: build/libretro_flash.dylib
 
     steps:
       - name: Checkout Repository
@@ -30,3 +39,21 @@ jobs:
 
       - name: Run Tests
         run: ctest --test-dir build --output-on-failure -C Release
+
+      - name: Stage Artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          if [ ! -f "build/Release/libretro_flash.dll" ] && [ -f "build/libretro_flash.dll" ]; then
+            mkdir -p build/Release
+            cp build/libretro_flash.dll build/Release/libretro_flash.dll
+          fi
+
+      - name: Upload Core Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            ${{ matrix.binary_path }}
+            waflash_libretro.info
+          if-no-files-found: error

@@ -10,6 +10,7 @@
 #include "input_manager.h"
 #include "avm2_vm.h"
 #include "display_list.h"
+#include "audio_mixer.h"
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -49,6 +50,7 @@ static struct {
     SWFParser                  swf_parser;
     InputManager               input_manager;
     AVM2VM                     avm2_vm;
+    AudioMixer                 audio_mixer;
     uint32_t                   m_current_frame;
     uint32_t                   m_total_frames;
 } g_core;
@@ -87,6 +89,7 @@ void retro_init(void) {
     memset(&g_core.avm_memory, 0, sizeof(SimulatedAVM3MemoryMap));
     g_core.avm2_vm.reset();
     g_core.avm2_vm.set_retro_memory(&g_core.avm_memory.system_ram);
+    g_core.audio_mixer.reset();
     g_core.initialized = true;
 
     if (g_core.log_cb) {
@@ -97,6 +100,7 @@ void retro_init(void) {
 void retro_deinit(void) {
     g_core.m_framebuffer.clear();
     g_core.m_framebuffer.shrink_to_fit();
+    g_core.audio_mixer.reset();
     g_core.initialized = false;
 }
 
@@ -138,6 +142,7 @@ void retro_reset(void) {
     // Reset AVMPlus Virtual Machine and Flare display list to initial frame
     g_core.m_current_frame = 0;
     g_core.avm2_vm.reset();
+    g_core.audio_mixer.reset();
     if (g_core.log_cb) {
         g_core.log_cb(RETRO_LOG_INFO, "[libretro-flash] Resetting AVMPlus runtime and Flare timeline to frame 0.\n");
     }
@@ -182,6 +187,8 @@ bool retro_load_game(const struct retro_game_info *game) {
     g_core.avm2_vm.reset();
     g_core.avm2_vm.set_retro_memory(&g_core.avm_memory.system_ram);
 
+    g_core.audio_mixer.reset();
+
     if (g_core.log_cb) {
         g_core.log_cb(RETRO_LOG_INFO,
             "[libretro-flash] SWF Parsed: Version=%u, Sig=%c%c%c, Dim=%ux%u, FPS=%.2f, ABC Blocks=%zu, Total Frames=%u\n",
@@ -205,6 +212,7 @@ void retro_unload_game(void) {
     g_core.avm_memory.game_loaded = false;
     g_core.m_current_frame = 0;
     g_core.avm2_vm.reset();
+    g_core.audio_mixer.reset();
 }
 
 void retro_run(void) {
@@ -255,8 +263,9 @@ void retro_run(void) {
     if (g_core.audio_batch_cb) {
         size_t frames = static_cast<size_t>(44100.0f / (g_core.swf_fps > 0.0f ? g_core.swf_fps : 60.0f));
         if (frames > 1024) frames = 1024;
-        int16_t silence[2048] = {0};
-        g_core.audio_batch_cb(silence, frames);
+        std::vector<int16_t> pcm_buffer(frames * AudioMixer::CHANNELS);
+        g_core.audio_mixer.generate_audio_frame(pcm_buffer.data(), frames);
+        g_core.audio_batch_cb(pcm_buffer.data(), frames);
     }
 }
 
