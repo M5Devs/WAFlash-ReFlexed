@@ -32,7 +32,7 @@ endif()
 enable_testing()
 
 # Target 1: Libretro Core Shared Library
-add_library(libretro_flash SHARED src/core_stub.cpp src/swf_parser.cpp)
+add_library(libretro_flash SHARED src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp)
 
 set_target_properties(libretro_flash PROPERTIES
     OUTPUT_NAME "libretro_flash"
@@ -50,7 +50,7 @@ else()
 endif()
 
 # Target 2: Unit Test Executable - Memory Map
-add_executable(test_memory_map tests/test_memory_map.cpp src/core_stub.cpp src/swf_parser.cpp)
+add_executable(test_memory_map tests/test_memory_map.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp)
 
 target_include_directories(test_memory_map PRIVATE include)
 target_link_libraries(test_memory_map PRIVATE ZLIB::ZLIB)
@@ -76,3 +76,30 @@ else()
 endif()
 
 add_test(NAME test_swf_parser COMMAND test_swf_parser)
+
+# Target 4: Unit Test Executable - ABC Parser
+add_executable(test_abc_parser tests/test_abc_parser.cpp src/abc_parser.cpp)
+
+target_include_directories(test_abc_parser PRIVATE include)
+
+if(MSVC)
+    target_compile_options(test_abc_parser PRIVATE /W4 /EHs-c- /GR-)
+else()
+    target_compile_options(test_abc_parser PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
+endif()
+
+add_test(NAME test_abc_parser COMMAND test_abc_parser)
+
+# Target 5: Unit Test Executable - Video Frame
+add_executable(test_video_frame tests/test_video_frame.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp)
+
+target_include_directories(test_video_frame PRIVATE include)
+target_link_libraries(test_video_frame PRIVATE ZLIB::ZLIB)
+
+if(MSVC)
+    target_compile_options(test_video_frame PRIVATE /W4 /EHs-c- /GR-)
+else()
+    target_compile_options(test_video_frame PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
+endif()
+
+add_test(NAME test_video_frame COMMAND test_video_frame)

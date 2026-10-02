@@ -53,6 +53,7 @@ private:
 
 SWFParser::SWFParser() {
     std::memset(&m_header, 0, sizeof(SWFHeader));
+    m_header.background_color_xrgb = 0x00FFFFFF;
 }
 
 SWFParser::~SWFParser() {}
@@ -64,6 +65,7 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
 
     m_abc_tags.clear();
     std::memset(&m_header, 0, sizeof(SWFHeader));
+    m_header.background_color_xrgb = 0x00FFFFFF;
 
     m_header.signature[0] = static_cast<char>(data[0]);
     m_header.signature[1] = static_cast<char>(data[1]);
@@ -154,6 +156,18 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
 
         if (offset + tag_length > uncompressed_data.size()) {
             break;
+        }
+
+        // TagSetBackgroundColor (9)
+        if (tag_type == 9) {
+            if (tag_length >= 3) {
+                uint8_t r = uncompressed_data[offset];
+                uint8_t g = uncompressed_data[offset + 1];
+                uint8_t b = uncompressed_data[offset + 2];
+                m_header.background_color_xrgb = (static_cast<uint32_t>(r) << 16) |
+                                                 (static_cast<uint32_t>(g) << 8) |
+                                                 static_cast<uint32_t>(b);
+            }
         }
 
         // TagDoABC2 (72) or TagDoABC (82)
