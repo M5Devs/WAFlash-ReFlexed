@@ -9,7 +9,18 @@ const createWaflash = (src) => {
 
     let waflash = {
         arguments: [ src ],
-        preRun: [],
+        preRun: [function() {
+            const unlockAudio = () => {
+                if (window.AL && window.AL.currentCtx && window.AL.currentCtx.audioCtx) {
+                    if (window.AL.currentCtx.audioCtx.state === 'suspended') {
+                        window.AL.currentCtx.audioCtx.resume();
+                    }
+                }
+            };
+            ['touchstart', 'touchend', 'click'].forEach(evt => {
+                document.addEventListener(evt, unlockAudio, { passive: true });
+            });
+        }],
         postRun: [],
         locateFile(path, prefix) {
             return WAFLASH_BASE_URL + path;
@@ -22,11 +33,12 @@ const createWaflash = (src) => {
         },
         canvas: (function () {
             const canvas = document.getElementById("canvas");
-            // As a default initial behavior, pop up an alert when webgl context is lost. To make your
-            // application robust, you may want to override this behavior before shipping!
-            // See http://www.khronos.org/registry/webgl/specs/latest/1.0/#5.15.2
             if (canvas) {
                 canvas.addEventListener("webglcontextlost", function (e) { alert('WebGL context lost. You will need to reload the page.'); e.preventDefault(); }, false);
+                const gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+                if (!gl) {
+                    console.warn("WebGL not supported or context creation failed on canvas");
+                }
             }
             return canvas;
         })(),
