@@ -32,10 +32,13 @@ public:
 
     const SWFHeader& get_header() const { return m_header; }
     const std::vector<ABCTag>& get_abc_tags() const { return m_abc_tags; }
+    const std::vector<size_t>& get_show_frame_positions() const { return m_show_frame_positions; }
+    size_t get_show_frame_count() const { return m_show_frame_positions.size(); }
 
 private:
     SWFHeader m_header;
     std::vector<ABCTag> m_abc_tags;
+    std::vector<size_t> m_show_frame_positions;
 };
 
 #endif // SWF_PARSER_H
