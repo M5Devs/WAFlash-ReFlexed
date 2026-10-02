@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>WAFlash Re:Flexed - Standalone Web Flash Player</title>
   
-  <!-- أداة فحص الموبايل -->
+  <!-- Mobile inspection tool -->
   <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
   <script>eruda.init();</script>
 
@@ -99,6 +99,23 @@
       font-weight: 500;
     }
 
+    #hud-overlay {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 30;
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(4px);
+      padding: 6px 14px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #38bdf8;
+      display: none;
+      gap: 12px;
+    }
+
     #status, #waflashStatus {
       margin-top: 10px;
       font-size: 0.85rem;
@@ -116,6 +133,11 @@
   </header>
 
   <div id="player-container">
+    <div id="hud-overlay">
+      <span>SCORE: <span id="hud-score">0</span></span>
+      <span>HP: <span id="hud-hp">0</span></span>
+    </div>
+
     <div id="drop-ui">
       <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
       <h3>Tap to Select .SWF File</h3>
@@ -141,115 +163,185 @@
     <button class="tool-btn" id="btn-restart" style="display:none;" onclick="location.reload()">🔄 Restart</button>
   </div>
 
-  <script type="module">
-    import * as WaflashModule from "./wasm/waflash-player.min.js";
-    const createWaflash = WaflashModule.createWaflash || WaflashModule.default;
-    
+  <script src="./waflash_core.js"></script>
+  <script>
     const box = document.getElementById('player-container');
     const dropUi = document.getElementById('drop-ui');
     const fileInput = document.getElementById('file-input');
     const canvasWrap = document.getElementById('canvas-wrap');
     const canvas = document.getElementById('canvas');
+    const ctx = canvas ? canvas.getContext('2d') : null;
     const statusMsg = document.getElementById('status');
     const btnRestart = document.getElementById('btn-restart');
     const btnFullscreen = document.getElementById('btn-fullscreen');
+    const hudOverlay = document.getElementById('hud-overlay');
+    const hudScore = document.getElementById('hud-score');
+    const hudHp = document.getElementById('hud-hp');
 
-    let swfArrayBuffer = null;
-    const VIRTUAL_SWF_URL = "./waflash-virtual-game.swf";
+    let wasmModule = null;
+    let wasmApi = null;
+    let animFrameId = null;
 
-    // 🚀 السحر البرمجي: اعتراض XHR & Fetch لتسليم الملف للـ C++ فوراً كـ 200 OK
-    const origXHR = window.XMLHttpRequest;
-    window.XMLHttpRequest = function() {
-      const xhr = new origXHR();
-      let isVirtual = false;
-      const origOpen = xhr.open;
-      xhr.open = function(method, url) {
-        if (url && (url.indexOf("waflash-virtual-game.swf") !== -1)) {
-          isVirtual = true;
-        }
-        return origOpen.apply(this, arguments);
-      };
-      const origSend = xhr.send;
-      xhr.send = function() {
-        if (isVirtual && swfArrayBuffer) {
-          setTimeout(() => {
-            Object.defineProperty(xhr, 'status', { value: 200, writable: false });
-            Object.defineProperty(xhr, 'statusText', { value: 'OK', writable: false });
-            Object.defineProperty(xhr, 'readyState', { value: 4, writable: false });
-            Object.defineProperty(xhr, 'response', { value: swfArrayBuffer, writable: false });
-            if (xhr.onload) xhr.onload();
-            if (xhr.onreadystatechange) xhr.onreadystatechange();
-          }, 10);
-          return;
-        }
-        return origSend.apply(this, arguments);
-      };
-      return xhr;
-    };
-
-    const origFetch = window.fetch;
-    window.fetch = function(input, init) {
-      const url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
-      if (url && url.indexOf("waflash-virtual-game.swf") !== -1 && swfArrayBuffer) {
-        return Promise.resolve(new Response(swfArrayBuffer, {
-          status: 200,
-          statusText: 'OK',
-          headers: { 'Content-Type': 'application/x-shockwave-flash' }
-        }));
-      }
-      return origFetch.apply(this, arguments);
-    };
-
-    function unlockAudioContext() {
-      const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
-      if (AudioCtxClass) {
-        if (window.AL && window.AL.currentCtx && window.AL.currentCtx.audioCtx) {
-          if (window.AL.currentCtx.audioCtx.state === 'suspended') {
-            window.AL.currentCtx.audioCtx.resume();
-          }
-        }
-      }
+    // Load and initialize WASM Module
+    if (typeof createWAFlashCore === 'function') {
+      createWAFlashCore().then(Module => {
+        wasmModule = Module;
+        wasmApi = {
+          loadSwf: Module.cwrap('wasm_load_swf', 'number', ['number', 'number']),
+          stepFrame: Module.cwrap('wasm_step_frame', null, []),
+          getFramebuffer: Module.cwrap('wasm_get_framebuffer', 'number', []),
+          getWidth: Module.cwrap('wasm_get_width', 'number', []),
+          getHeight: Module.cwrap('wasm_get_height', 'number', []),
+          sendKey: Module.cwrap('wasm_send_key', null, ['number', 'number']),
+          sendPointer: Module.cwrap('wasm_send_pointer', null, ['number', 'number', 'number']),
+          getPlayerScore: Module.cwrap('wasm_get_player_score', 'number', []),
+          getPlayerHp: Module.cwrap('wasm_get_player_hp', 'number', [])
+        };
+        console.log("⚡ WAFlash WASM Core loaded successfully.");
+      }).catch(err => {
+        console.error("Failed to initialize WAFlash Core WASM Module:", err);
+      });
     }
-
-    ['touchstart', 'touchend', 'click'].forEach(eventType => {
-      box.addEventListener(eventType, unlockAudioContext, { passive: true });
-      if (canvas) canvas.addEventListener(eventType, unlockAudioContext, { passive: true });
-    });
 
     fileInput.addEventListener('change', (e) => {
       if (e.target.files.length > 0) handleFile(e.target.files[0]);
     });
 
     function handleFile(file) {
+      if (!wasmApi || !wasmModule) {
+        statusMsg.innerText = "WASM Core loading... Please wait a moment and try again.";
+        return;
+      }
+
       statusMsg.innerText = `Reading "${file.name}" (${(file.size / 1024).toFixed(1)} KB)...`;
-      
+
       const reader = new FileReader();
       reader.onload = function(evt) {
-        swfArrayBuffer = evt.target.result;
-        console.log("✅ SWF Buffer Ready in Memory:", swfArrayBuffer.byteLength, "bytes");
+        const arrayBuffer = evt.target.result;
+        const uint8Array = new Uint8Array(arrayBuffer);
+
+        // Allocate WASM memory and copy file payload
+        const ptr = wasmModule._malloc(uint8Array.length);
+        wasmModule.HEAPU8.set(uint8Array, ptr);
+
+        const success = wasmApi.loadSwf(ptr, uint8Array.length);
+        wasmModule._free(ptr);
+
+        if (!success) {
+          statusMsg.innerText = "Error: Failed to parse SWF payload!";
+          return;
+        }
+
+        const width = wasmApi.getWidth();
+        const height = wasmApi.getHeight();
+        canvas.width = width;
+        canvas.height = height;
 
         dropUi.style.display = 'none';
         canvasWrap.style.zIndex = '10';
+        hudOverlay.style.display = 'flex';
         box.style.border = 'none';
         btnRestart.style.display = 'inline-block';
+        statusMsg.innerText = `Loaded "${file.name}" (${width}x${height})`;
 
         if (canvas) canvas.focus();
-        unlockAudioContext();
 
-        try {
-          // بنمرر الرابط الافتراضي اللي بينتهي بـ .swf ومضمون 100%
-          createWaflash(VIRTUAL_SWF_URL);
-        } catch (err) {
-          console.error(err);
-          statusMsg.innerText = 'Error: ' + err.message;
-        }
+        if (animFrameId) cancelAnimationFrame(animFrameId);
+        startRenderLoop();
       };
-      
+
       reader.onerror = function() {
-        alert("Failed to read file from storage!");
+        alert("Failed to read file!");
       };
 
       reader.readAsArrayBuffer(file);
+    }
+
+    function startRenderLoop() {
+      function render() {
+        if (!wasmApi) return;
+
+        wasmApi.stepFrame();
+
+        const width = canvas.width;
+        const height = canvas.height;
+        const fbPtr = wasmApi.getFramebuffer();
+
+        if (fbPtr && ctx && width > 0 && height > 0) {
+          // Read 32-bit XRGB buffer from WASM HEAPU32
+          const pixelCount = width * height;
+          const fbData = new Uint32Array(wasmModule.HEAPU32.buffer, fbPtr, pixelCount);
+          const imgData = ctx.createImageData(width, height);
+          const data32 = new Uint32Array(imgData.data.buffer);
+
+          // Convert XRGB8888 -> RGBA8888
+          for (let i = 0; i < pixelCount; ++i) {
+            const xrgb = fbData[i];
+            const r = (xrgb >> 16) & 0xFF;
+            const g = (xrgb >> 8) & 0xFF;
+            const b = xrgb & 0xFF;
+            data32[i] = (255 << 24) | (b << 16) | (g << 8) | r;
+          }
+
+          ctx.putImageData(imgData, 0, 0);
+        }
+
+        // Update live HUD metrics
+        hudScore.innerText = wasmApi.getPlayerScore();
+        hudHp.innerText = wasmApi.getPlayerHp();
+
+        animFrameId = requestAnimationFrame(render);
+      }
+
+      animFrameId = requestAnimationFrame(render);
+    }
+
+    // Input Bindings
+    window.addEventListener('keydown', (e) => {
+      if (wasmApi) wasmApi.sendKey(e.keyCode, 1);
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (wasmApi) wasmApi.sendKey(e.keyCode, 0);
+    });
+
+    function getCanvasCoords(evt) {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+      const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+      return {
+        x: Math.round((clientX - rect.left) * scaleX),
+        y: Math.round((clientY - rect.top) * scaleY)
+      };
+    }
+
+    if (canvas) {
+      ['mousedown', 'touchstart'].forEach(type => {
+        canvas.addEventListener(type, (e) => {
+          if (!wasmApi) return;
+          const coords = getCanvasCoords(e);
+          wasmApi.sendPointer(coords.x, coords.y, 1);
+        });
+      });
+
+      ['mouseup', 'touchend'].forEach(type => {
+        canvas.addEventListener(type, (e) => {
+          if (!wasmApi) return;
+          const coords = getCanvasCoords(e);
+          wasmApi.sendPointer(coords.x, coords.y, 0);
+        });
+      });
+
+      ['mousemove', 'touchmove'].forEach(type => {
+        canvas.addEventListener(type, (e) => {
+          if (!wasmApi) return;
+          const coords = getCanvasCoords(e);
+          const isPressed = e.buttons !== 0 || (e.touches && e.touches.length > 0);
+          wasmApi.sendPointer(coords.x, coords.y, isPressed ? 1 : 0);
+        });
+      });
     }
 
     btnFullscreen.addEventListener('click', () => {

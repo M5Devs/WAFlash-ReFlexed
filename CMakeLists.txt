@@ -31,6 +31,37 @@ endif()
 # Enable testing
 enable_testing()
 
+if(EMSCRIPTEN)
+    # Target 0: Emscripten WebAssembly Target
+    add_executable(waflash_web
+        src/wasm_api.cpp
+        src/swf_parser.cpp
+        src/abc_parser.cpp
+        src/input_manager.cpp
+        src/avm2_vm.cpp
+        src/display_list.cpp
+        src/audio_mixer.cpp
+    )
+
+    set_target_properties(waflash_web PROPERTIES
+        OUTPUT_NAME "waflash_core"
+        SUFFIX ".js"
+    )
+
+    target_include_directories(waflash_web PRIVATE include)
+    target_link_libraries(waflash_web PRIVATE ZLIB::ZLIB)
+
+    target_link_options(waflash_web PRIVATE
+        "-sWASM=1"
+        "-sMODULARIZE=1"
+        "-sEXPORT_NAME=\"createWAFlashCore\""
+        "-sALLOW_MEMORY_GROWTH=1"
+        "-sUSE_ZLIB=1"
+        "-sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue','HEAPU8','HEAPU32','_malloc','_free']"
+        "-O3"
+    )
+endif()
+
 # Target 1: Libretro Core Shared Library
 add_library(libretro_flash SHARED src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp)
 
@@ -184,3 +215,17 @@ else()
 endif()
 
 add_test(NAME test_serialization COMMAND test_serialization)
+
+# Target 12: Unit Test Executable - WASM API
+add_executable(test_wasm_api tests/test_wasm_api.cpp src/wasm_api.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp)
+
+target_include_directories(test_wasm_api PRIVATE include)
+target_link_libraries(test_wasm_api PRIVATE ZLIB::ZLIB)
+
+if(MSVC)
+    target_compile_options(test_wasm_api PRIVATE /W4 /EHs-c- /GR-)
+else()
+    target_compile_options(test_wasm_api PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
+endif()
+
+add_test(NAME test_wasm_api COMMAND test_wasm_api)
