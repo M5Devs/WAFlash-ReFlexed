@@ -5,6 +5,7 @@
  */
 
 #include "libretro.h"
+#include "retro_flash_memory.h"
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -15,14 +16,10 @@
 #define CORE_DEFAULT_HEIGHT 600
 #define CORE_DEFAULT_FPS    60.0
 
-// Simulated Memory Layout structure for RetroAchievements / rcheevos
+// Simulated Memory Layout structure wrapping RetroFlashMemoryMap
 struct SimulatedAVM3MemoryMap {
-    uint8_t  system_ram[0x100000]; // 1MB linear state space exposed to RETRO_MEMORY_SYSTEM_RAM
-    uint32_t active_score;
-    uint32_t active_lives;
-    uint32_t current_level;
-    uint32_t player_hp;
-    bool     game_loaded;
+    RetroFlashMemoryMap system_ram; // Linear state space exposed to RETRO_MEMORY_SYSTEM_RAM
+    bool                game_loaded;
 };
 
 // Global Core State
@@ -205,7 +202,7 @@ void *retro_get_memory_data(unsigned id) {
     switch (id) {
         case RETRO_MEMORY_SYSTEM_RAM:
             // Expose active state space for RetroAchievements hooks
-            return g_core.avm_memory.system_ram;
+            return &g_core.avm_memory.system_ram;
         default:
             return NULL;
     }
