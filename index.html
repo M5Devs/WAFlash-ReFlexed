@@ -126,8 +126,9 @@
   </div>
 
   <script type="module">
-    import createWaflash from "./wasm/waflash-player.min.js";
-
+    import * as WaflashModule from "./wasm/waflash-player.min.js";
+    const createWaflash = WaflashModule.createWaflash || WaflashModule.default;
+    
     const box = document.getElementById('player-container');
     const dropUi = document.getElementById('drop-ui');
     const fileInput = document.getElementById('file-input');
