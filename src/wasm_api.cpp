@@ -1,138 +1,68 @@
 #include "wasm_api.h"
-#include "swf_parser.h"
-#include "input_manager.h"
-#include "avm2_vm.h"
-#include "audio_mixer.h"
-#include "retro_flash_memory.h"
-#include "display_list.h"
-#include "vector_rasterizer.h"
+#include "base/tu_file.h"
+#include "gameswf/gameswf.h"
+#include "gameswf/gameswf_root.h"
+#include "gameswf/gameswf_player.h"
+#include "gameswf/gameswf_movie_def.h"
+#include "gameswf/gameswf_types.h"
 #include <vector>
 #include <cstring>
 #include <algorithm>
-#include <array>
 
-static SWFParser             g_wasm_swf_parser;
-static AVM2VM                g_wasm_avm2_vm;
-static AudioMixer            g_wasm_audio_mixer;
-static RetroFlashMemoryMap   g_wasm_memory_map;
-static std::vector<uint32_t> g_wasm_framebuffer;
-static uint32_t              g_wasm_width        = 800;
-static uint32_t              g_wasm_height       = 600;
-static uint32_t              g_wasm_current_frame = 0;
-static uint32_t              g_wasm_total_frames  = 1;
-static bool                  g_wasm_game_loaded   = false;
+extern gameswf::render_handler* create_render_handler_wasm();
+extern tu_file* create_gameswf_tu_file_mem(const uint8_t* data, size_t size);
+namespace gameswf { void ensure_loaders_registered(); }
 
-static std::array<bool, 256> g_wasm_key_states   = {false};
-static int32_t               g_wasm_mouse_x      = 0;
-static int32_t               g_wasm_mouse_y      = 0;
-static bool                  g_wasm_mouse_pressed = false;
+std::vector<uint32_t> g_wasm_framebuffer;
+uint32_t              g_wasm_width  = 800;
+uint32_t              g_wasm_height = 600;
 
-// ─── Render helpers ──────────────────────────────────────────────────────────
-
-static void render_node_recursive(const DisplayList& dl,
-                                   const std::shared_ptr<DisplayObjectNode>& node,
-                                   const Matrix2D& parent_world) {
-    if (!node) return;
-
-    Matrix2D world = Matrix2D::multiply(parent_world, node->local_matrix);
-
-    if (node->get_type() == DisplayObjectType::Shape) {
-        const SWFShapeDefinition* shape = dl.find_shape(node->character_id);
-        if (shape) {
-            std::vector<Point2D> world_verts;
-            if (!shape->polygon_vertices.empty()) {
-                world_verts.reserve(shape->polygon_vertices.size());
-                for (const auto& v : shape->polygon_vertices) {
-                    float xp = world.a * v.x + world.c * v.y + world.tx;
-                    float yp = world.b * v.x + world.d * v.y + world.ty;
-                    world_verts.push_back({xp, yp});
-                }
-            } else {
-                float x1 = static_cast<float>(shape->x_min);
-                float x2 = static_cast<float>(shape->x_max);
-                float y1 = static_cast<float>(shape->y_min);
-                float y2 = static_cast<float>(shape->y_max);
-                Point2D local_rect[4] = {{x1,y1},{x2,y1},{x2,y2},{x1,y2}};
-                for (int i = 0; i < 4; ++i) {
-                    float xp = world.a * local_rect[i].x + world.c * local_rect[i].y + world.tx;
-                    float yp = world.b * local_rect[i].x + world.d * local_rect[i].y + world.ty;
-                    world_verts.push_back({xp, yp});
-                }
-            }
-            VectorTessellator::rasterize_polygon(
-                world_verts,
-                shape->fill_color_xrgb,
-                g_wasm_framebuffer.data(),
-                g_wasm_width,
-                g_wasm_height
-            );
-        }
-    } else if (node->get_type() == DisplayObjectType::MovieClip) {
-        auto clip = std::static_pointer_cast<MovieClipInstance>(node);
-        for (const auto& [depth, child] : clip->children) {
-            render_node_recursive(dl, child, world);
-        }
-    }
-}
-
-// ─── C API ───────────────────────────────────────────────────────────────────
+static gameswf::player* g_player = nullptr;
+static gameswf::root*   g_movie  = nullptr;
 
 extern "C" {
 
 int wasm_load_swf(const uint8_t* data, size_t size) {
     if (!data || size == 0) return 0;
 
-    std::memset(&g_wasm_memory_map, 0, sizeof(RetroFlashMemoryMap));
-    g_wasm_game_loaded = false;
+    if (!g_player) {
+        g_player = new gameswf::player();
+        g_player->set_separate_thread(false);
+    }
 
-    g_wasm_audio_mixer.reset();
-    g_wasm_swf_parser.set_audio_mixer(&g_wasm_audio_mixer);
+    gameswf::set_render_handler(create_render_handler_wasm());
+    gameswf::set_sound_handler(nullptr);
 
-    if (!g_wasm_swf_parser.parse(data, size)) return 0;
+    tu_file* in = create_gameswf_tu_file_mem(data, size);
+    if (!in) return 0;
 
-    const SWFHeader& header = g_wasm_swf_parser.get_header();
-    g_wasm_width  = header.width_px  ? header.width_px  : 800;
-    g_wasm_height = header.height_px ? header.height_px : 600;
+    gameswf::ensure_loaders_registered();
 
-    g_wasm_current_frame = 0;
-    size_t show_frames   = g_wasm_swf_parser.get_show_frame_count();
-    g_wasm_total_frames  = show_frames > 0
-                           ? static_cast<uint32_t>(show_frames)
-                           : (header.frame_count > 0 ? header.frame_count : 1);
+    gameswf::gc_ptr<gameswf::movie_def_impl> def = new gameswf::movie_def_impl(g_player, gameswf::DO_LOAD_BITMAPS, gameswf::DO_LOAD_FONT_SHAPES);
+    def->read(in);
+    delete in;
 
-    g_wasm_framebuffer.assign(g_wasm_width * g_wasm_height,
-                               header.background_color_xrgb);
+    g_movie = def->create_instance();
+    if (!g_movie) return 0;
 
-    g_wasm_avm2_vm.reset();
-    g_wasm_avm2_vm.set_retro_memory(&g_wasm_memory_map);
+    int w = g_movie->get_movie_width();
+    int h = g_movie->get_movie_height();
+    g_wasm_width  = (w > 0) ? static_cast<uint32_t>(w) : 800;
+    g_wasm_height = (h > 0) ? static_cast<uint32_t>(h) : 600;
 
-    g_wasm_swf_parser.apply_frame(0);
+    g_wasm_framebuffer.assign(g_wasm_width * g_wasm_height, 0xFFFFFFFF);
 
-    g_wasm_game_loaded = true;
     return 1;
 }
 
 void wasm_step_frame(void) {
-    if (!g_wasm_game_loaded) return;
+    if (!g_movie) return;
 
-    if (g_wasm_total_frames > 0) {
-        g_wasm_current_frame = (g_wasm_current_frame + 1) % g_wasm_total_frames;
-    }
+    float fps = g_movie->get_frame_rate();
+    float delta_time = (fps > 0.0f) ? (1.0f / fps) : (1.0f / 30.0f);
 
-    g_wasm_swf_parser.apply_frame(g_wasm_current_frame);
-    g_wasm_swf_parser.get_display_list().advance_frame();
-
-    const SWFHeader& header = g_wasm_swf_parser.get_header();
-    std::fill(g_wasm_framebuffer.begin(), g_wasm_framebuffer.end(),
-              header.background_color_xrgb);
-
-    const DisplayList& dl = g_wasm_swf_parser.get_display_list();
-    Matrix2D identity{};
-    if (dl.get_root_stage()) {
-        for (const auto& [depth, child] : dl.get_root_stage()->children) {
-            render_node_recursive(dl, child, identity);
-        }
-    }
+    g_movie->advance(delta_time);
+    g_movie->display();
 }
 
 const uint32_t* wasm_get_framebuffer(void) {
@@ -143,22 +73,24 @@ int wasm_get_width(void)  { return static_cast<int>(g_wasm_width);  }
 int wasm_get_height(void) { return static_cast<int>(g_wasm_height); }
 
 void wasm_send_key(int keycode, int is_down) {
-    if (keycode >= 0 && keycode < 256)
-        g_wasm_key_states[keycode] = (is_down != 0);
+    if (g_movie && g_player) {
+        g_movie->notify_key_event(g_player, static_cast<gameswf::key::code>(keycode), is_down != 0);
+    }
 }
 
 void wasm_send_pointer(int x, int y, int is_down) {
-    g_wasm_mouse_x       = x;
-    g_wasm_mouse_y       = y;
-    g_wasm_mouse_pressed = (is_down != 0);
+    if (g_movie) {
+        g_movie->notify_mouse_state(x, y, is_down ? 1 : 0);
+    }
 }
 
-uint32_t wasm_get_player_score(void) { return g_wasm_memory_map.player_score; }
-uint32_t wasm_get_player_hp(void)    { return g_wasm_memory_map.player_hp;    }
+uint32_t wasm_get_player_score(void) { return 0; }
+uint32_t wasm_get_player_hp(void)    { return 0; }
 
 size_t wasm_get_audio_samples(int16_t* out_buffer, size_t num_frames) {
     if (!out_buffer || num_frames == 0) return 0;
-    return g_wasm_audio_mixer.generate_audio_frame(out_buffer, num_frames);
+    std::memset(out_buffer, 0, num_frames * 2 * sizeof(int16_t));
+    return num_frames;
 }
 
 } // extern "C"

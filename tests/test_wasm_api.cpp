@@ -6,14 +6,15 @@
 int main() {
     printf("[TEST] Starting WASM C-API Unit Tests...\n");
 
-    // Minimal FWS SWF header (8 bytes) + Rect (5 bytes) + FrameRate/Count + TagEnd
+    // Valid FWS SWF header (8 bytes) + Rect (1 byte) + FrameRate/Count + TagShowFrame + TagEnd
     std::vector<uint8_t> dummy_swf = {
         'F', 'W', 'S', 15,
-        18, 0, 0, 0, // File length = 18 bytes
-        0x08, 0x00, 0x00, 0x00, 0x00, // Rect 0x0 twips
-        0x00, 0x3C, // 60 fps
-        0x01, 0x00, // 1 frame
-        0x00, 0x00  // TagEnd
+        18, 0, 0, 0,                   // File length = 18 bytes
+        0x00,                          // Rect 0x0 twips (nbits = 0)
+        0x00, 0x3C,                    // 60 fps
+        0x01, 0x00,                    // 1 frame
+        0x40, 0x00,                    // TagShowFrame (Tag 1, len 0)
+        0x00, 0x00                     // TagEnd (Tag 0, len 0)
     };
 
     int loaded = wasm_load_swf(dummy_swf.data(), dummy_swf.size());

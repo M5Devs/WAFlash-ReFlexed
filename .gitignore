@@ -11,3 +11,5 @@ CMakeCache.txt
 .idea/
 Testing/
 build-wasm/
+build_native/
+build_wasm/

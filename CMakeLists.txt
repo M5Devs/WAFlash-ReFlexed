@@ -32,15 +32,205 @@ endif()
 # Enable testing
 enable_testing()
 
+# ── gameswf AS1/AS2 engine (static, no OpenGL, no SDL, no stdio) ──────────────
+set(GAMESWF_ROOT "${CMAKE_SOURCE_DIR}/third_party/gameswf/GameSwfPort/GameSwf")
+
+if(NOT EXISTS "${GAMESWF_ROOT}/gameswf/gameswf_action.cpp")
+    message(STATUS "gameswf source files not found. Initializing git submodules...")
+    find_package(Git REQUIRED)
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} submodule update --init --recursive
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        RESULT_VARIABLE GAMESWF_SUBMODULE_RESULT
+    )
+    if(NOT GAMESWF_SUBMODULE_RESULT EQUAL 0)
+        message(FATAL_ERROR "Failed to initialize gameswf submodule")
+    endif()
+endif()
+
+# Apply C++17 compatibility patches to gameswf files if needed
+if(EXISTS "${GAMESWF_ROOT}/base/tu_math.h")
+    file(READ "${GAMESWF_ROOT}/base/tu_math.h" TU_MATH_H_CONTENT)
+    if(TU_MATH_H_CONTENT MATCHES "#define isfinite\\(x\\)")
+        string(REPLACE
+            "#ifndef isfinite"
+            "#include <cmath>\n#undef isfinite\nusing std::isfinite;\n#if 0"
+            TU_MATH_H_CONTENT "${TU_MATH_H_CONTENT}")
+        file(WRITE "${GAMESWF_ROOT}/base/tu_math.h" "${TU_MATH_H_CONTENT}")
+    endif()
+endif()
+
+if(EXISTS "${GAMESWF_ROOT}/base/utility.h")
+    file(READ "${GAMESWF_ROOT}/base/utility.h" UTILITY_H_CONTENT)
+    if(UTILITY_H_CONTENT MATCHES "inline float\tfmax")
+        string(REPLACE
+            "inline float\tfmax(float a, float b) { if (a < b) return b; else return a; }"
+            "#include <cmath>\nusing std::fmax;"
+            UTILITY_H_CONTENT "${UTILITY_H_CONTENT}")
+        string(REPLACE
+            "inline float\tfmin(float a, float b) { if (a < b) return a; else return b; }"
+            "using std::fmin;"
+            UTILITY_H_CONTENT "${UTILITY_H_CONTENT}")
+        file(WRITE "${GAMESWF_ROOT}/base/utility.h" "${UTILITY_H_CONTENT}")
+    endif()
+endif()
+
+if(EXISTS "${GAMESWF_ROOT}/gameswf/gameswf_environment.h")
+    file(READ "${GAMESWF_ROOT}/gameswf/gameswf_environment.h" ENV_H_CONTENT)
+    if(ENV_H_CONTENT MATCHES "private array<as_value>")
+        string(REPLACE
+            "struct vm_stack : private array<as_value>"
+            "struct vm_stack : public array<as_value>"
+            ENV_H_CONTENT "${ENV_H_CONTENT}")
+        file(WRITE "${GAMESWF_ROOT}/gameswf/gameswf_environment.h" "${ENV_H_CONTENT}")
+    endif()
+endif()
+
+if(EXISTS "${GAMESWF_ROOT}/base/container.h")
+    file(READ "${GAMESWF_ROOT}/base/container.h" CONTAINER_H_CONTENT)
+    if(CONTAINER_H_CONTENT MATCHES "unsigned int\thash_value = \\(unsigned int\\) compute_hash\\(key\\);")
+        string(REPLACE
+            "unsigned int\thash_value = (unsigned int) compute_hash(key);"
+            "typedef size_t hash_val_t;\n\thash_val_t\thash_value = compute_hash(key);"
+            CONTAINER_H_CONTENT "${CONTAINER_H_CONTENT}")
+        string(REPLACE
+            "entry(const T& key, const U& value, int next_in_chain, int hash_value)"
+            "typedef size_t hash_val_t;\n\t\tentry(const T& key, const U& value, int next_in_chain, hash_val_t hash_value)"
+            CONTAINER_H_CONTENT "${CONTAINER_H_CONTENT}")
+        file(WRITE "${GAMESWF_ROOT}/base/container.h" "${CONTAINER_H_CONTENT}")
+    endif()
+endif()
+
+if(EXISTS "${GAMESWF_ROOT}/gameswf/gameswf_sprite.cpp")
+    file(READ "${GAMESWF_ROOT}/gameswf/gameswf_sprite.cpp" SPRITE_CPP_CONTENT)
+    if(SPRITE_CPP_CONTENT MATCHES "m_init_actions_executed\\.resize\\(m_def->get_frame_count\\(\\)\\);")
+        string(REPLACE
+            "m_init_actions_executed.resize(m_def->get_frame_count());"
+            "int fc = m_def->get_frame_count(); m_init_actions_executed.resize(fc > 0 ? fc : 1);"
+            SPRITE_CPP_CONTENT "${SPRITE_CPP_CONTENT}")
+        file(WRITE "${GAMESWF_ROOT}/gameswf/gameswf_sprite.cpp" "${SPRITE_CPP_CONTENT}")
+    endif()
+endif()
+
+add_library(gameswf_core STATIC
+    ${GAMESWF_ROOT}/gameswf/gameswf_action.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_dlist.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_impl.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_sprite.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_sprite_def.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_shape.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_stream.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_types.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_value.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_object.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_function.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_character.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_movie_def.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_root.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_player.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_render.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_sound.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_log.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_environment.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_sprite.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_button.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_canvas.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_morph2.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_tesselate.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_styles.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_disasm.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_listener.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_mutex.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_font.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_text.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_filters.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_abc.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_avm2.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_video_impl.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_array.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_boolean.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_broadcaster.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_class.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_color.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_color_transform.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_date.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_event.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_flash.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_geom.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_global.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_key.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_loadvars.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_math.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_matrix.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_mcloader.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_mouse.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_mouse_event.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_netconnection.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_netstream.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_number.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_point.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_selection.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_sharedobject.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_sound.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_string.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_textformat.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_transform.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_xml.cpp
+    ${GAMESWF_ROOT}/gameswf/gameswf_as_classes/as_xmlsocket.cpp
+    ${GAMESWF_ROOT}/base/tu_file.cpp
+    ${GAMESWF_ROOT}/base/container.cpp
+    ${GAMESWF_ROOT}/base/ear_clip_triangulate_float.cpp
+    ${GAMESWF_ROOT}/base/ear_clip_triangulate_sint16.cpp
+    ${GAMESWF_ROOT}/base/logger.cpp
+    ${GAMESWF_ROOT}/base/membuf.cpp
+    ${GAMESWF_ROOT}/base/tu_random.cpp
+    ${GAMESWF_ROOT}/base/tu_timer.cpp
+    ${GAMESWF_ROOT}/base/tu_loadlib.cpp
+    ${GAMESWF_ROOT}/base/utf8.cpp
+    ${GAMESWF_ROOT}/base/image.cpp
+    ${GAMESWF_ROOT}/base/jpeg.cpp
+    ${GAMESWF_ROOT}/base/zlib_adapter.cpp
+)
+
+target_include_directories(gameswf_core PUBLIC
+    ${GAMESWF_ROOT}
+    ${GAMESWF_ROOT}/gameswf
+    ${GAMESWF_ROOT}/base
+)
+
+# Disable all platform backends — WASM/embedded only
+target_compile_definitions(gameswf_core PUBLIC
+    GAMESWF_NO_SDL=1
+    GAMESWF_NO_OPENGL=1
+    GAMESWF_NO_FREETYPE=1
+    GAMESWF_NO_JPEG=1
+    TU_CONFIG_LINK_TO_THREAD=0
+    TU_CONFIG_LINK_TO_JPEGLIB=0
+    TU_CONFIG_LINK_TO_ZLIB=1
+    NOMINMAX=1
+    WIN32_LEAN_AND_MEAN=1
+    _USE_MATH_DEFINES=1
+)
+
+if(MSVC)
+    target_compile_options(gameswf_core PRIVATE /W3 /O2 /GR-)
+else()
+    target_compile_options(gameswf_core PRIVATE -fPIC -w -O3 -fno-rtti)
+endif()
+
+target_link_libraries(gameswf_core PRIVATE ZLIB::ZLIB)
+
 if(EMSCRIPTEN)
     # Target 0: Emscripten WebAssembly Target
     add_executable(waflash_web
         src/wasm_api.cpp
-        src/swf_parser.cpp
-        src/abc_parser.cpp
+        src/gameswf_render_wasm.cpp
+        src/gameswf_tu_file_mem.cpp
+        # src/swf_parser.cpp
+        # src/abc_parser.cpp
         src/input_manager.cpp
-        src/avm2_vm.cpp
-        src/display_list.cpp
+        # src/avm2_vm.cpp
+        # src/display_list.cpp
         src/audio_mixer.cpp
         src/audio_stream_decoder.cpp
         src/vector_rasterizer.cpp
@@ -52,7 +242,7 @@ if(EMSCRIPTEN)
     )
 
     target_include_directories(waflash_web PRIVATE include)
-    target_link_libraries(waflash_web PRIVATE ZLIB::ZLIB)
+    target_link_libraries(waflash_web PRIVATE ZLIB::ZLIB gameswf_core)
 
     target_link_options(waflash_web PRIVATE
         "-sWASM=1"
@@ -67,7 +257,19 @@ if(EMSCRIPTEN)
 endif()
 
 # Target 1: Libretro Core Shared Library
-add_library(libretro_flash SHARED src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
+add_library(libretro_flash SHARED
+    src/core_stub.cpp
+    src/gameswf_render_wasm.cpp
+    src/gameswf_tu_file_mem.cpp
+    # src/swf_parser.cpp
+    # src/abc_parser.cpp
+    src/input_manager.cpp
+    # src/avm2_vm.cpp
+    # src/display_list.cpp
+    src/audio_mixer.cpp
+    src/audio_stream_decoder.cpp
+    src/vector_rasterizer.cpp
+)
 
 set_target_properties(libretro_flash PROPERTIES
     OUTPUT_NAME "libretro_flash"
@@ -76,7 +278,7 @@ set_target_properties(libretro_flash PROPERTIES
 )
 
 target_include_directories(libretro_flash PUBLIC include)
-target_link_libraries(libretro_flash PRIVATE ZLIB::ZLIB)
+target_link_libraries(libretro_flash PRIVATE ZLIB::ZLIB gameswf_core)
 
 if(MSVC)
     target_compile_options(libretro_flash PRIVATE /W4 /O2 /EHs-c- /GR-)
@@ -84,249 +286,52 @@ else()
     target_compile_options(libretro_flash PRIVATE -fPIC -Wall -Wextra -O3 -fno-exceptions -fno-rtti)
 endif()
 
-# Target 2: Unit Test Executable - Memory Map
-add_executable(test_memory_map tests/test_memory_map.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
-
-target_include_directories(test_memory_map PRIVATE include)
-target_link_libraries(test_memory_map PRIVATE ZLIB::ZLIB)
-
-if(MSVC)
-    target_compile_options(test_memory_map PRIVATE /W4 /EHs-c- /GR-)
-else()
-    target_compile_options(test_memory_map PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
-endif()
-
-add_test(NAME test_memory_map COMMAND test_memory_map)
-
-# Target 3: Unit Test Executable - SWF Parser
-add_executable(test_swf_parser tests/test_swf_parser.cpp src/swf_parser.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
-
-target_include_directories(test_swf_parser PRIVATE include)
-target_link_libraries(test_swf_parser PRIVATE ZLIB::ZLIB)
-
-if(MSVC)
-    target_compile_options(test_swf_parser PRIVATE /W4 /EHs-c- /GR-)
-else()
-    target_compile_options(test_swf_parser PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
-endif()
-
-add_test(NAME test_swf_parser COMMAND test_swf_parser)
-
-# Target 4: Unit Test Executable - ABC Parser
-add_executable(test_abc_parser tests/test_abc_parser.cpp src/abc_parser.cpp)
-
-target_include_directories(test_abc_parser PRIVATE include)
-
-if(MSVC)
-    target_compile_options(test_abc_parser PRIVATE /W4 /EHs-c- /GR-)
-else()
-    target_compile_options(test_abc_parser PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
-endif()
-
-add_test(NAME test_abc_parser COMMAND test_abc_parser)
-
-# Target 5: Unit Test Executable - Video Frame
-add_executable(test_video_frame tests/test_video_frame.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
-
-target_include_directories(test_video_frame PRIVATE include)
-target_link_libraries(test_video_frame PRIVATE ZLIB::ZLIB)
-
-if(MSVC)
-    target_compile_options(test_video_frame PRIVATE /W4 /EHs-c- /GR-)
-else()
-    target_compile_options(test_video_frame PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
-endif()
-
-add_test(NAME test_video_frame COMMAND test_video_frame)
-
-# Target 6: Unit Test Executable - Input Subsystem
+# Unit Test Executable - Input Subsystem
 add_executable(test_input tests/test_input.cpp src/input_manager.cpp)
-
 target_include_directories(test_input PRIVATE include)
-
 if(MSVC)
     target_compile_options(test_input PRIVATE /W4 /EHs-c- /GR-)
 else()
     target_compile_options(test_input PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
 endif()
-
 add_test(NAME test_input COMMAND test_input)
 
-# Target 7: Unit Test Executable - Timeline Stepper
-add_executable(test_timeline tests/test_timeline.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
-
-target_include_directories(test_timeline PRIVATE include)
-target_link_libraries(test_timeline PRIVATE ZLIB::ZLIB)
-
-if(MSVC)
-    target_compile_options(test_timeline PRIVATE /W4 /EHs-c- /GR-)
-else()
-    target_compile_options(test_timeline PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
-endif()
-
-add_test(NAME test_timeline COMMAND test_timeline)
-
-# Target 8: Unit Test Executable - AVM2 VM
-add_executable(test_avm2_vm tests/test_avm2_vm.cpp src/avm2_vm.cpp src/abc_parser.cpp)
-
-target_include_directories(test_avm2_vm PRIVATE include)
-
-if(MSVC)
-    target_compile_options(test_avm2_vm PRIVATE /W4 /EHs-c- /GR-)
-else()
-    target_compile_options(test_avm2_vm PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
-endif()
-
-add_test(NAME test_avm2_vm COMMAND test_avm2_vm)
-
-# Target 9: Unit Test Executable - DisplayList
-add_executable(test_display_list tests/test_display_list.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
-
-target_include_directories(test_display_list PRIVATE include)
-target_link_libraries(test_display_list PRIVATE ZLIB::ZLIB)
-
-if(MSVC)
-    target_compile_options(test_display_list PRIVATE /W4 /EHs-c- /GR-)
-else()
-    target_compile_options(test_display_list PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
-endif()
-
-add_test(NAME test_display_list COMMAND test_display_list)
-
-# Target 10: Unit Test Executable - Audio Subsystem
+# Unit Test Executable - Audio Subsystem
 add_executable(test_audio tests/test_audio.cpp src/audio_mixer.cpp)
-
 target_include_directories(test_audio PRIVATE include)
-
 if(MSVC)
     target_compile_options(test_audio PRIVATE /W4 /EHs-c- /GR-)
 else()
     target_compile_options(test_audio PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
 endif()
-
 add_test(NAME test_audio COMMAND test_audio)
 
-# Target 11: Unit Test Executable - Serialization
-add_executable(test_serialization tests/test_serialization.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
-
-target_include_directories(test_serialization PRIVATE include)
-target_link_libraries(test_serialization PRIVATE ZLIB::ZLIB)
-
-if(MSVC)
-    target_compile_options(test_serialization PRIVATE /W4 /EHs-c- /GR-)
-else()
-    target_compile_options(test_serialization PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
-endif()
-
-add_test(NAME test_serialization COMMAND test_serialization)
-
-# Target 12: Unit Test Executable - WASM API
-add_executable(test_wasm_api tests/test_wasm_api.cpp src/wasm_api.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
-
-target_include_directories(test_wasm_api PRIVATE include)
-target_link_libraries(test_wasm_api PRIVATE ZLIB::ZLIB)
-
-if(MSVC)
-    target_compile_options(test_wasm_api PRIVATE /W4 /EHs-c- /GR-)
-else()
-    target_compile_options(test_wasm_api PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
-endif()
-
-add_test(NAME test_wasm_api COMMAND test_wasm_api)
-
-# Target 13: Unit Test Executable - Sound Stream
-add_executable(test_sound_stream tests/test_sound_stream.cpp src/swf_parser.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
-
-target_include_directories(test_sound_stream PRIVATE include)
-target_link_libraries(test_sound_stream PRIVATE ZLIB::ZLIB)
-
-if(MSVC)
-    target_compile_options(test_sound_stream PRIVATE /W4 /EHs-c- /GR-)
-else()
-    target_compile_options(test_sound_stream PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
-endif()
-
-add_test(NAME test_sound_stream COMMAND test_sound_stream)
-
-# Target 14: Unit Test Executable - Sprite
-add_executable(test_sprite tests/test_sprite.cpp src/swf_parser.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
-
-target_include_directories(test_sprite PRIVATE include)
-target_link_libraries(test_sprite PRIVATE ZLIB::ZLIB)
-
-if(MSVC)
-    target_compile_options(test_sprite PRIVATE /W4 /EHs-c- /GR-)
-else()
-    target_compile_options(test_sprite PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
-endif()
-
-add_test(NAME test_sprite COMMAND test_sprite)
-
-# Target 15: Unit Test Executable - Audio Stream
-add_executable(test_audio_stream tests/test_audio_stream.cpp src/audio_stream_decoder.cpp src/swf_parser.cpp src/display_list.cpp src/audio_mixer.cpp src/vector_rasterizer.cpp)
-
-target_include_directories(test_audio_stream PRIVATE include)
-target_link_libraries(test_audio_stream PRIVATE ZLIB::ZLIB)
-
-if(MSVC)
-    target_compile_options(test_audio_stream PRIVATE /W4 /EHs-c- /GR-)
-else()
-    target_compile_options(test_audio_stream PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
-endif()
-
-add_test(NAME test_audio_stream COMMAND test_audio_stream)
-
-# Target 16: Unit Test Executable - MovieClip & Scene Graph Hierarchy
-add_executable(test_movieclip tests/test_movieclip.cpp src/swf_parser.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
-
-target_include_directories(test_movieclip PRIVATE include)
-target_link_libraries(test_movieclip PRIVATE ZLIB::ZLIB)
-
-if(MSVC)
-    target_compile_options(test_movieclip PRIVATE /W4 /EHs-c- /GR-)
-else()
-    target_compile_options(test_movieclip PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
-endif()
-
-add_test(NAME test_movieclip COMMAND test_movieclip)
-
-# Target 17: Unit Test Executable - Vector Tessellator & Scanline Rasterizer
+# Unit Test Executable - Vector Tessellator & Scanline Rasterizer
 add_executable(test_rasterizer tests/test_rasterizer.cpp src/vector_rasterizer.cpp)
-
 target_include_directories(test_rasterizer PRIVATE include)
-
 if(MSVC)
     target_compile_options(test_rasterizer PRIVATE /W4 /EHs-c- /GR-)
 else()
     target_compile_options(test_rasterizer PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
 endif()
-
 add_test(NAME test_rasterizer COMMAND test_rasterizer)
 
-# Target 18: Unit Test Executable - Per-Frame Timeline Command Queue
-add_executable(test_frame_timeline tests/test_frame_timeline.cpp src/swf_parser.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
-
-target_include_directories(test_frame_timeline PRIVATE include)
-target_link_libraries(test_frame_timeline PRIVATE ZLIB::ZLIB)
-
+# Unit Test Executable - WASM API
+add_executable(test_wasm_api
+    tests/test_wasm_api.cpp
+    src/wasm_api.cpp
+    src/gameswf_render_wasm.cpp
+    src/gameswf_tu_file_mem.cpp
+    src/input_manager.cpp
+    src/audio_mixer.cpp
+    src/audio_stream_decoder.cpp
+    src/vector_rasterizer.cpp
+)
+target_include_directories(test_wasm_api PRIVATE include)
+target_link_libraries(test_wasm_api PRIVATE ZLIB::ZLIB gameswf_core)
 if(MSVC)
-    target_compile_options(test_frame_timeline PRIVATE /W4 /EHs-c- /GR-)
+    target_compile_options(test_wasm_api PRIVATE /W4 /EHs-c- /GR-)
 else()
-    target_compile_options(test_frame_timeline PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
+    target_compile_options(test_wasm_api PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
 endif()
-
-add_test(NAME test_frame_timeline COMMAND test_frame_timeline)
-
-# Target 19: Unit Test Executable - Ruffle Parity PlaceObject2 & Fixed-Point Matrix Decoding
-add_executable(test_ruffle_parity tests/test_ruffle_parity.cpp src/swf_parser.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
-
-target_include_directories(test_ruffle_parity PRIVATE include)
-target_link_libraries(test_ruffle_parity PRIVATE ZLIB::ZLIB)
-
-if(MSVC)
-    target_compile_options(test_ruffle_parity PRIVATE /W4 /EHs-c- /GR-)
-else()
-    target_compile_options(test_ruffle_parity PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
-endif()
-
-add_test(NAME test_ruffle_parity COMMAND test_ruffle_parity)
+add_test(NAME test_wasm_api COMMAND test_wasm_api)
