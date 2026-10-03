@@ -77,6 +77,23 @@ std::shared_ptr<MovieClipInstance> DisplayList::create_movieclip_from_sprite(uin
     return clip;
 }
 
+void DisplayList::update_object_matrix(uint16_t depth, const Matrix2D& mat) {
+    // Update transform of existing object at this depth without changing character
+    auto it = m_stage_objects.find(depth);
+    if (it != m_stage_objects.end()) {
+        it->second.matrix = mat;
+        it->second.transform_x = static_cast<int32_t>(mat.tx);
+        it->second.transform_y = static_cast<int32_t>(mat.ty);
+    }
+    // Update node in scene graph
+    if (m_root_stage) {
+        auto node_it = m_root_stage->children.find(depth);
+        if (node_it != m_root_stage->children.end() && node_it->second) {
+            node_it->second->local_matrix = mat;
+        }
+    }
+}
+
 void DisplayList::remove_object(uint16_t depth) {
     m_stage_objects.erase(depth);
     if (m_root_stage) {
