@@ -35,6 +35,19 @@ enable_testing()
 # ── gameswf AS1/AS2 engine (static, no OpenGL, no SDL, no stdio) ──────────────
 set(GAMESWF_ROOT "${CMAKE_SOURCE_DIR}/third_party/gameswf/GameSwfPort/GameSwf")
 
+if(NOT EXISTS "${GAMESWF_ROOT}/gameswf/gameswf_action.cpp")
+    message(STATUS "gameswf source files not found. Initializing git submodules...")
+    find_package(Git REQUIRED)
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} submodule update --init --recursive
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        RESULT_VARIABLE GAMESWF_SUBMODULE_RESULT
+    )
+    if(NOT GAMESWF_SUBMODULE_RESULT EQUAL 0)
+        message(FATAL_ERROR "Failed to initialize gameswf submodule")
+    endif()
+endif()
+
 add_library(gameswf_core STATIC
     ${GAMESWF_ROOT}/gameswf/gameswf_action.cpp
     ${GAMESWF_ROOT}/gameswf/gameswf_dlist.cpp
