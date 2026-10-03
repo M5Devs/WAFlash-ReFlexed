@@ -26,31 +26,37 @@ static int32_t               g_wasm_mouse_x = 0;
 static int32_t               g_wasm_mouse_y = 0;
 static bool                  g_wasm_mouse_pressed = false;
 
-static void render_character(const DisplayList& dl, uint16_t character_id, int32_t pos_x, int32_t pos_y) {
-    const SWFShapeDefinition* shape = dl.find_shape(character_id);
-    if (shape) {
-        int32_t screen_x_min = shape->x_min + pos_x;
-        int32_t screen_x_max = shape->x_max + pos_x;
-        int32_t screen_y_min = shape->y_min + pos_y;
-        int32_t screen_y_max = shape->y_max + pos_y;
+static void render_node_recursive(const DisplayList& dl, const std::shared_ptr<DisplayObjectNode>& node, const Matrix2D& parent_world) {
+    if (!node) return;
 
-        int32_t clip_x_start = std::max<int32_t>(0, screen_x_min);
-        int32_t clip_x_end   = std::min<int32_t>(static_cast<int32_t>(g_wasm_width), screen_x_max);
-        int32_t clip_y_start = std::max<int32_t>(0, screen_y_min);
-        int32_t clip_y_end   = std::min<int32_t>(static_cast<int32_t>(g_wasm_height), screen_y_max);
+    Matrix2D world = Matrix2D::multiply(parent_world, node->local_matrix);
 
-        for (int32_t y = clip_y_start; y < clip_y_end; ++y) {
-            for (int32_t x = clip_x_start; x < clip_x_end; ++x) {
-                g_wasm_framebuffer[y * g_wasm_width + x] = shape->fill_color_xrgb;
+    if (node->get_type() == DisplayObjectType::Shape) {
+        const SWFShapeDefinition* shape = dl.find_shape(node->character_id);
+        if (shape) {
+            int32_t pos_x = static_cast<int32_t>(world.tx);
+            int32_t pos_y = static_cast<int32_t>(world.ty);
+
+            int32_t screen_x_min = shape->x_min + pos_x;
+            int32_t screen_x_max = shape->x_max + pos_x;
+            int32_t screen_y_min = shape->y_min + pos_y;
+            int32_t screen_y_max = shape->y_max + pos_y;
+
+            int32_t clip_x_start = std::max<int32_t>(0, screen_x_min);
+            int32_t clip_x_end   = std::min<int32_t>(static_cast<int32_t>(g_wasm_width), screen_x_max);
+            int32_t clip_y_start = std::max<int32_t>(0, screen_y_min);
+            int32_t clip_y_end   = std::min<int32_t>(static_cast<int32_t>(g_wasm_height), screen_y_max);
+
+            for (int32_t y = clip_y_start; y < clip_y_end; ++y) {
+                for (int32_t x = clip_x_start; x < clip_x_end; ++x) {
+                    g_wasm_framebuffer[y * g_wasm_width + x] = shape->fill_color_xrgb;
+                }
             }
         }
-        return;
-    }
-
-    const SWFSpriteDefinition* sprite = dl.find_sprite(character_id);
-    if (sprite) {
-        for (const auto& sub_obj : sprite->sub_objects) {
-            render_character(dl, sub_obj.character_id, pos_x + sub_obj.transform_x, pos_y + sub_obj.transform_y);
+    } else if (node->get_type() == DisplayObjectType::MovieClip) {
+        auto clip = std::static_pointer_cast<MovieClipInstance>(node);
+        for (const auto& [depth, child] : clip->children) {
+            render_node_recursive(dl, child, world);
         }
     }
 }
@@ -99,13 +105,18 @@ void wasm_step_frame(void) {
         g_wasm_current_frame = (g_wasm_current_frame + 1) % g_wasm_total_frames;
     }
 
+    // Advance nested MovieClip timeline frames
+    g_wasm_swf_parser.get_display_list().advance_frame();
+
     const SWFHeader& header = g_wasm_swf_parser.get_header();
     std::fill(g_wasm_framebuffer.begin(), g_wasm_framebuffer.end(), header.background_color_xrgb);
 
     const DisplayList& dl = g_wasm_swf_parser.get_display_list();
-    for (const auto& pair : dl.get_active_objects()) {
-        const DisplayObject& obj = pair.second;
-        render_character(dl, obj.character_id, obj.transform_x, obj.transform_y);
+    Matrix2D identity_matrix{};
+    if (dl.get_root_stage()) {
+        for (const auto& [depth, child] : dl.get_root_stage()->children) {
+            render_node_recursive(dl, child, identity_matrix);
+        }
     }
 }
 

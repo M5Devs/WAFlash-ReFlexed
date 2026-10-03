@@ -274,3 +274,17 @@ else()
 endif()
 
 add_test(NAME test_audio_stream COMMAND test_audio_stream)
+
+# Target 16: Unit Test Executable - MovieClip & Scene Graph Hierarchy
+add_executable(test_movieclip tests/test_movieclip.cpp src/swf_parser.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp)
+
+target_include_directories(test_movieclip PRIVATE include)
+target_link_libraries(test_movieclip PRIVATE ZLIB::ZLIB)
+
+if(MSVC)
+    target_compile_options(test_movieclip PRIVATE /W4 /EHs-c- /GR-)
+else()
+    target_compile_options(test_movieclip PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
+endif()
+
+add_test(NAME test_movieclip COMMAND test_movieclip)
