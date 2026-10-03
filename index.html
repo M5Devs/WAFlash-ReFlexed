@@ -182,6 +182,65 @@
     let wasmApi = null;
     let animFrameId = null;
 
+    // WebAudio Subsystem
+    let audioCtx = null;
+    let audioNode = null;
+    let audioBufferPtr = null;
+    const AUDIO_BUFFER_FRAMES = 1024;
+
+    function initWebAudio() {
+      if (audioCtx) {
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+        return;
+      }
+
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) {
+        console.warn("WebAudio is not supported by this browser.");
+        return;
+      }
+
+      audioCtx = new AudioContextClass({ sampleRate: 44100 });
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+
+      if (wasmModule && wasmModule._malloc) {
+        audioBufferPtr = wasmModule._malloc(AUDIO_BUFFER_FRAMES * 2 * 2); // 1024 frames * 2 channels * 2 bytes
+      }
+
+      audioNode = audioCtx.createScriptProcessor(AUDIO_BUFFER_FRAMES, 0, 2);
+      audioNode.onaudioprocess = function(e) {
+        if (!wasmApi || !wasmModule || !audioBufferPtr) return;
+
+        const leftChan = e.outputBuffer.getChannelData(0);
+        const rightChan = e.outputBuffer.getChannelData(1);
+
+        wasmApi.getAudioSamples(audioBufferPtr, AUDIO_BUFFER_FRAMES);
+
+        const heap16 = wasmModule.HEAP16;
+        const startIdx = audioBufferPtr >> 1;
+
+        for (let i = 0; i < AUDIO_BUFFER_FRAMES; ++i) {
+          const l = heap16[startIdx + i * 2];
+          const r = heap16[startIdx + i * 2 + 1];
+          leftChan[i] = l / 32768.0;
+          rightChan[i] = r / 32768.0;
+        }
+      };
+
+      audioNode.connect(audioCtx.destination);
+      console.log("🔊 WebAudio engine initialized successfully.");
+    }
+
+    ['click', 'touchstart', 'keydown'].forEach(evt => {
+      window.addEventListener(evt, () => {
+        initWebAudio();
+      }, { once: false });
+    });
+
     // Load and initialize WASM Module
     if (typeof createWAFlashCore === 'function') {
       createWAFlashCore().then(Module => {
@@ -195,8 +254,14 @@
           sendKey: Module.cwrap('wasm_send_key', null, ['number', 'number']),
           sendPointer: Module.cwrap('wasm_send_pointer', null, ['number', 'number', 'number']),
           getPlayerScore: Module.cwrap('wasm_get_player_score', 'number', []),
-          getPlayerHp: Module.cwrap('wasm_get_player_hp', 'number', [])
+          getPlayerHp: Module.cwrap('wasm_get_player_hp', 'number', []),
+          getAudioSamples: Module.cwrap('wasm_get_audio_samples', 'number', ['number', 'number'])
         };
+
+        if (audioCtx && !audioBufferPtr) {
+          audioBufferPtr = wasmModule._malloc(AUDIO_BUFFER_FRAMES * 2 * 2);
+        }
+
         console.log("⚡ WAFlash WASM Core loaded successfully.");
       }).catch(err => {
         console.error("Failed to initialize WAFlash Core WASM Module:", err);
@@ -213,6 +278,7 @@
         return;
       }
 
+      initWebAudio();
       statusMsg.innerText = `Reading "${file.name}" (${(file.size / 1024).toFixed(1)} KB)...`;
 
       const reader = new FileReader();
@@ -313,17 +379,14 @@
       let clientX = evt.clientX;
       let clientY = evt.clientY;
 
-      // التعامل مع لمسات التاتش بأمان تام
       if (evt.touches && evt.touches.length > 0) {
         clientX = evt.touches[0].clientX;
         clientY = evt.touches[0].clientY;
       } else if (evt.changedTouches && evt.changedTouches.length > 0) {
-        // دي اللي بتنقذنا لما ترفع صباعك في touchend!
         clientX = evt.changedTouches[0].clientX;
         clientY = evt.changedTouches[0].clientY;
       }
 
-      // حماية إضافية لو القيمة طلعت غير معرفة
       if (clientX === undefined || clientY === undefined) {
         return { x: 0, y: 0 };
       }

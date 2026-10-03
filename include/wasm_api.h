@@ -25,6 +25,7 @@ EMSCRIPTEN_KEEPALIVE void wasm_send_key(int keycode, int is_down);
 EMSCRIPTEN_KEEPALIVE void wasm_send_pointer(int x, int y, int is_down);
 EMSCRIPTEN_KEEPALIVE uint32_t wasm_get_player_score(void);
 EMSCRIPTEN_KEEPALIVE uint32_t wasm_get_player_hp(void);
+EMSCRIPTEN_KEEPALIVE size_t wasm_get_audio_samples(int16_t* out_buffer, size_t num_frames);
 
 #ifdef __cplusplus
 }

@@ -199,6 +199,7 @@ void retro_init(void) {
     g_core.avm2_vm.reset();
     g_core.avm2_vm.set_retro_memory(&g_core.avm_memory.system_ram);
     g_core.audio_mixer.reset();
+    g_core.swf_parser.set_audio_mixer(&g_core.audio_mixer);
     g_core.initialized = true;
 
     if (g_core.log_cb) {
@@ -254,7 +255,6 @@ void retro_set_controller_port_device(unsigned port, unsigned device) {
 }
 
 void retro_reset(void) {
-    // Reset AVMPlus Virtual Machine and Flare display list to initial frame
     g_core.m_current_frame = 0;
     g_core.avm2_vm.reset();
     g_core.audio_mixer.reset();
@@ -271,6 +271,8 @@ bool retro_load_game(const struct retro_game_info *game) {
     if (g_core.log_cb) {
         g_core.log_cb(RETRO_LOG_INFO, "[libretro-flash] Loading SWF payload (%zu bytes).\n", game->size);
     }
+
+    g_core.swf_parser.set_audio_mixer(&g_core.audio_mixer);
 
     const uint8_t* swf_data = static_cast<const uint8_t*>(game->data);
     if (!g_core.swf_parser.parse(swf_data, game->size)) {
@@ -295,7 +297,6 @@ bool retro_load_game(const struct retro_game_info *game) {
         g_core.env_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt);
     }
 
-    // Reallocate frame buffer if dimensions change and clear with stage background color
     g_core.m_framebuffer.assign(g_core.swf_width * g_core.swf_height, header.background_color_xrgb);
     g_core.frame_buffer_pitch = g_core.swf_width * sizeof(uint32_t);
 
@@ -330,23 +331,14 @@ void retro_unload_game(void) {
     g_core.audio_mixer.reset();
 }
 
-static void render_current_video_frame(void) {
-    const SWFHeader& header = g_core.swf_parser.get_header();
-    std::fill(g_core.m_framebuffer.begin(), g_core.m_framebuffer.end(), header.background_color_xrgb);
+static void render_core_character(const DisplayList& dl, uint16_t character_id, int32_t pos_x, int32_t pos_y) {
+    const SWFShapeDefinition* shape = dl.find_shape(character_id);
+    if (shape) {
+        int32_t screen_x_min = shape->x_min + pos_x;
+        int32_t screen_x_max = shape->x_max + pos_x;
+        int32_t screen_y_min = shape->y_min + pos_y;
+        int32_t screen_y_max = shape->y_max + pos_y;
 
-    // Software Rasterizer: Iterate active stage objects in ascending depth order
-    const DisplayList& dl = g_core.swf_parser.get_display_list();
-    for (const auto& pair : dl.get_active_objects()) {
-        const DisplayObject& obj = pair.second;
-        const SWFShapeDefinition* shape = dl.find_shape(obj.character_id);
-        if (!shape) continue;
-
-        int32_t screen_x_min = shape->x_min + obj.transform_x;
-        int32_t screen_x_max = shape->x_max + obj.transform_x;
-        int32_t screen_y_min = shape->y_min + obj.transform_y;
-        int32_t screen_y_max = shape->y_max + obj.transform_y;
-
-        // Clip to stage boundaries
         int32_t clip_x_start = std::max<int32_t>(0, screen_x_min);
         int32_t clip_x_end   = std::min<int32_t>(static_cast<int32_t>(g_core.swf_width), screen_x_max);
         int32_t clip_y_start = std::max<int32_t>(0, screen_y_min);
@@ -357,6 +349,25 @@ static void render_current_video_frame(void) {
                 g_core.m_framebuffer[y * g_core.swf_width + x] = shape->fill_color_xrgb;
             }
         }
+        return;
+    }
+
+    const SWFSpriteDefinition* sprite = dl.find_sprite(character_id);
+    if (sprite) {
+        for (const auto& sub_obj : sprite->sub_objects) {
+            render_core_character(dl, sub_obj.character_id, pos_x + sub_obj.transform_x, pos_y + sub_obj.transform_y);
+        }
+    }
+}
+
+static void render_current_video_frame(void) {
+    const SWFHeader& header = g_core.swf_parser.get_header();
+    std::fill(g_core.m_framebuffer.begin(), g_core.m_framebuffer.end(), header.background_color_xrgb);
+
+    const DisplayList& dl = g_core.swf_parser.get_display_list();
+    for (const auto& pair : dl.get_active_objects()) {
+        const DisplayObject& obj = pair.second;
+        render_core_character(dl, obj.character_id, obj.transform_x, obj.transform_y);
     }
 
     if (g_core.video_cb && !g_core.m_framebuffer.empty()) {
@@ -434,7 +445,6 @@ bool retro_unserialize(const void *data, size_t size) {
     g_core.avm2_vm.import_state(payload->avm2_state);
     g_core.swf_parser.get_display_list().import_state(payload->display_list_state);
 
-    // Trigger immediate video refresh to render the restored state
     render_current_video_frame();
 
     return true;

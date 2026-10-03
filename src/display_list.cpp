@@ -6,6 +6,10 @@ void DisplayList::register_shape(const SWFShapeDefinition& shape) {
     m_dictionary[shape.character_id] = shape;
 }
 
+void DisplayList::register_sprite(const SWFSpriteDefinition& sprite) {
+    m_sprite_dictionary[sprite.sprite_id] = sprite;
+}
+
 void DisplayList::place_object(uint16_t depth, uint16_t character_id, int32_t x, int32_t y) {
     DisplayObject obj;
     obj.depth = depth;
@@ -21,6 +25,7 @@ void DisplayList::remove_object(uint16_t depth) {
 
 void DisplayList::clear() {
     m_dictionary.clear();
+    m_sprite_dictionary.clear();
     m_stage_objects.clear();
 }
 
@@ -56,6 +61,14 @@ void DisplayList::import_state(const SerializedDisplayListState& in_state) {
 const SWFShapeDefinition* DisplayList::find_shape(uint16_t character_id) const {
     auto it = m_dictionary.find(character_id);
     if (it != m_dictionary.end()) {
+        return &it->second;
+    }
+    return nullptr;
+}
+
+const SWFSpriteDefinition* DisplayList::find_sprite(uint16_t character_id) const {
+    auto it = m_sprite_dictionary.find(character_id);
+    if (it != m_sprite_dictionary.end()) {
         return &it->second;
     }
     return nullptr;

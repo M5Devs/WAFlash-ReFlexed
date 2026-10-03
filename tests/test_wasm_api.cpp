@@ -43,6 +43,11 @@ int main() {
     assert(score == 0 && hp == 0);
     printf("  [PASS] HUD score & HP getters return valid memory values (%u, %u).\n", score, hp);
 
+    int16_t audio_buf[2048];
+    size_t frames = wasm_get_audio_samples(audio_buf, 1024);
+    assert(frames == 1024);
+    printf("  [PASS] wasm_get_audio_samples filled audio buffer (%zu frames).\n", frames);
+
     printf("[TEST] All WASM C-API unit tests passed successfully!\n");
     return 0;
 }

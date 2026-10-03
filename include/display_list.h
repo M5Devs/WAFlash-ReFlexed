@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <unordered_map>
 #include <map>
+#include <vector>
 #include "serialization.h"
 
 struct SWFShapeDefinition {
@@ -22,12 +23,19 @@ struct DisplayObject {
     int32_t transform_y{0};
 };
 
+struct SWFSpriteDefinition {
+    uint16_t sprite_id{0};
+    uint16_t frame_count{0};
+    std::vector<DisplayObject> sub_objects;
+};
+
 class DisplayList {
 public:
     DisplayList() = default;
     ~DisplayList() = default;
 
     void register_shape(const SWFShapeDefinition& shape);
+    void register_sprite(const SWFSpriteDefinition& sprite);
     void place_object(uint16_t depth, uint16_t character_id, int32_t x, int32_t y);
     void remove_object(uint16_t depth);
     void clear();
@@ -36,11 +44,14 @@ public:
     void import_state(const SerializedDisplayListState& in_state);
 
     const SWFShapeDefinition* find_shape(uint16_t character_id) const;
+    const SWFSpriteDefinition* find_sprite(uint16_t character_id) const;
     const std::map<uint16_t, DisplayObject>& get_active_objects() const { return m_stage_objects; }
     const std::unordered_map<uint16_t, SWFShapeDefinition>& get_dictionary() const { return m_dictionary; }
+    const std::unordered_map<uint16_t, SWFSpriteDefinition>& get_sprite_dictionary() const { return m_sprite_dictionary; }
 
 private:
     std::unordered_map<uint16_t, SWFShapeDefinition> m_dictionary;
+    std::unordered_map<uint16_t, SWFSpriteDefinition> m_sprite_dictionary;
     std::map<uint16_t, DisplayObject> m_stage_objects;
 };
 
