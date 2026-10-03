@@ -7,6 +7,7 @@
 #include <vector>
 #include "display_list.h"
 #include "audio_mixer.h"
+#include "audio_stream_decoder.h"
 
 struct SWFHeader {
     char signature[3];
@@ -31,6 +32,7 @@ struct SWFSoundStreamHeader {
     bool is_16bit{true};
     bool is_stereo{false};
     uint16_t sample_count_per_frame{0};
+    int16_t latency_seek{0};
     bool is_active{false};
 };
 
@@ -51,6 +53,8 @@ public:
     const DisplayList& get_display_list() const { return m_display_list; }
     DisplayList& get_display_list() { return m_display_list; }
     const SWFSoundStreamHeader& get_sound_stream_header() const { return m_sound_stream_header; }
+    AudioStreamDecoder& get_stream_decoder() { return m_stream_decoder; }
+    const AudioStreamDecoder& get_stream_decoder() const { return m_stream_decoder; }
 
 private:
     SWFHeader m_header;
@@ -58,7 +62,8 @@ private:
     std::vector<ABCTag> m_abc_tags;
     std::vector<size_t> m_show_frame_positions;
     DisplayList m_display_list;
-    AudioMixer* m_audio_mixer;
+    AudioMixer* m_audio_mixer{nullptr};
+    AudioStreamDecoder m_stream_decoder;
 };
 
 #endif // SWF_PARSER_H
