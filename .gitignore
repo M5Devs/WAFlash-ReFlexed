@@ -10,3 +10,4 @@ CMakeCache.txt
 .vscode/
 .idea/
 Testing/
+build-wasm/
