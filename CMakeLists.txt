@@ -49,16 +49,27 @@ if(NOT EXISTS "${GAMESWF_ROOT}/gameswf/gameswf_action.cpp")
 endif()
 
 # Apply C++17 compatibility patches to gameswf files if needed
+if(EXISTS "${GAMESWF_ROOT}/base/tu_math.h")
+    file(READ "${GAMESWF_ROOT}/base/tu_math.h" TU_MATH_H_CONTENT)
+    if(TU_MATH_H_CONTENT MATCHES "#define isfinite\\(x\\)")
+        string(REPLACE
+            "#ifndef isfinite"
+            "#include <cmath>\n#undef isfinite\nusing std::isfinite;\n#if 0"
+            TU_MATH_H_CONTENT "${TU_MATH_H_CONTENT}")
+        file(WRITE "${GAMESWF_ROOT}/base/tu_math.h" "${TU_MATH_H_CONTENT}")
+    endif()
+endif()
+
 if(EXISTS "${GAMESWF_ROOT}/base/utility.h")
     file(READ "${GAMESWF_ROOT}/base/utility.h" UTILITY_H_CONTENT)
     if(UTILITY_H_CONTENT MATCHES "inline float\tfmax")
         string(REPLACE
             "inline float\tfmax(float a, float b) { if (a < b) return b; else return a; }"
-            "#include <cmath>\n#ifndef fmax\n#define fmax std::fmax\n#endif\n"
+            "#include <cmath>\nusing std::fmax;"
             UTILITY_H_CONTENT "${UTILITY_H_CONTENT}")
         string(REPLACE
             "inline float\tfmin(float a, float b) { if (a < b) return a; else return b; }"
-            "#ifndef fmin\n#define fmin std::fmin\n#endif\n"
+            "using std::fmin;"
             UTILITY_H_CONTENT "${UTILITY_H_CONTENT}")
         file(WRITE "${GAMESWF_ROOT}/base/utility.h" "${UTILITY_H_CONTENT}")
     endif()
@@ -196,7 +207,16 @@ target_compile_definitions(gameswf_core PUBLIC
     TU_CONFIG_LINK_TO_THREAD=0
     TU_CONFIG_LINK_TO_JPEGLIB=0
     TU_CONFIG_LINK_TO_ZLIB=1
+    NOMINMAX=1
+    WIN32_LEAN_AND_MEAN=1
+    _USE_MATH_DEFINES=1
 )
+
+if(MSVC)
+    target_compile_options(gameswf_core PRIVATE /W3 /O2 /GR-)
+else()
+    target_compile_options(gameswf_core PRIVATE -fPIC -w -O3 -fno-rtti)
+endif()
 
 target_link_libraries(gameswf_core PRIVATE ZLIB::ZLIB)
 

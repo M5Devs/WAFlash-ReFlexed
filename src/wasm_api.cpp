@@ -8,7 +8,6 @@
 #include <vector>
 #include <cstring>
 #include <algorithm>
-#include <cstdio>
 
 extern gameswf::render_handler* create_render_handler_wasm();
 extern tu_file* create_gameswf_tu_file_mem(const uint8_t* data, size_t size);
@@ -18,8 +17,8 @@ std::vector<uint32_t> g_wasm_framebuffer;
 uint32_t              g_wasm_width  = 800;
 uint32_t              g_wasm_height = 600;
 
-static gameswf::gc_ptr<gameswf::player> g_player = nullptr;
-static gameswf::gc_ptr<gameswf::root>   g_movie  = nullptr;
+static gameswf::player* g_player = nullptr;
+static gameswf::root*   g_movie  = nullptr;
 
 extern "C" {
 
@@ -39,7 +38,7 @@ int wasm_load_swf(const uint8_t* data, size_t size) {
 
     gameswf::ensure_loaders_registered();
 
-    gameswf::gc_ptr<gameswf::movie_def_impl> def = new gameswf::movie_def_impl(g_player.get_ptr(), gameswf::DO_LOAD_BITMAPS, gameswf::DO_LOAD_FONT_SHAPES);
+    gameswf::gc_ptr<gameswf::movie_def_impl> def = new gameswf::movie_def_impl(g_player, gameswf::DO_LOAD_BITMAPS, gameswf::DO_LOAD_FONT_SHAPES);
     def->read(in);
     delete in;
 
@@ -75,7 +74,7 @@ int wasm_get_height(void) { return static_cast<int>(g_wasm_height); }
 
 void wasm_send_key(int keycode, int is_down) {
     if (g_movie && g_player) {
-        g_movie->notify_key_event(g_player.get_ptr(), static_cast<gameswf::key::code>(keycode), is_down != 0);
+        g_movie->notify_key_event(g_player, static_cast<gameswf::key::code>(keycode), is_down != 0);
     }
 }
 
