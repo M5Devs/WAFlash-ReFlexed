@@ -103,6 +103,7 @@ int wasm_load_swf(const uint8_t* data, size_t size) {
     g_wasm_avm2_vm.set_retro_memory(&g_wasm_memory_map);
     g_wasm_audio_mixer.reset();
 
+    g_wasm_swf_parser.apply_frame(0);
     g_wasm_game_loaded = true;
     return 1;
 }
@@ -115,6 +116,8 @@ void wasm_step_frame(void) {
     if (g_wasm_total_frames > 0) {
         g_wasm_current_frame = (g_wasm_current_frame + 1) % g_wasm_total_frames;
     }
+
+    g_wasm_swf_parser.apply_frame(g_wasm_current_frame);
 
     // Advance nested MovieClip timeline frames
     g_wasm_swf_parser.get_display_list().advance_frame();

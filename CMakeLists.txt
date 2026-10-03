@@ -302,3 +302,17 @@ else()
 endif()
 
 add_test(NAME test_rasterizer COMMAND test_rasterizer)
+
+# Target 18: Unit Test Executable - Per-Frame Timeline Command Queue
+add_executable(test_frame_timeline tests/test_frame_timeline.cpp src/swf_parser.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
+
+target_include_directories(test_frame_timeline PRIVATE include)
+target_link_libraries(test_frame_timeline PRIVATE ZLIB::ZLIB)
+
+if(MSVC)
+    target_compile_options(test_frame_timeline PRIVATE /W4 /EHs-c- /GR-)
+else()
+    target_compile_options(test_frame_timeline PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
+endif()
+
+add_test(NAME test_frame_timeline COMMAND test_frame_timeline)

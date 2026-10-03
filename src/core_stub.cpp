@@ -314,6 +314,7 @@ bool retro_load_game(const struct retro_game_info *game) {
             g_core.swf_parser.get_abc_tags().size(), g_core.m_total_frames);
     }
 
+    g_core.swf_parser.apply_frame(0);
     g_core.avm_memory.game_loaded = true;
     return true;
 }
@@ -411,6 +412,8 @@ void retro_run(void) {
     if (g_core.m_total_frames > 0) {
         g_core.m_current_frame = (g_core.m_current_frame + 1) % g_core.m_total_frames;
     }
+
+    g_core.swf_parser.apply_frame(g_core.m_current_frame);
 
     // Recursively advance nested MovieClips
     g_core.swf_parser.get_display_list().advance_frame();

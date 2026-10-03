@@ -36,12 +36,33 @@ struct SWFSoundStreamHeader {
     bool is_active{false};
 };
 
+struct SWFPlaceCommand {
+    uint16_t depth{0};
+    uint16_t character_id{0};
+    int32_t transform_x{0};
+    int32_t transform_y{0};
+    bool has_character{false};
+    bool has_matrix{false};
+    Matrix2D matrix{};
+};
+
+struct SWFRemoveCommand {
+    uint16_t depth{0};
+};
+
+struct SWFFrame {
+    std::vector<SWFPlaceCommand>  place_commands;
+    std::vector<SWFRemoveCommand> remove_commands;
+    std::vector<uint8_t>          sound_stream_block; // Compressed audio payload for this frame
+};
+
 class SWFParser {
 public:
     SWFParser();
     ~SWFParser();
 
     bool parse(const uint8_t* data, size_t size);
+    void apply_frame(size_t frame_index);
 
     void set_audio_mixer(AudioMixer* mixer) { m_audio_mixer = mixer; }
     AudioMixer* get_audio_mixer() const { return m_audio_mixer; }
@@ -50,6 +71,7 @@ public:
     const std::vector<ABCTag>& get_abc_tags() const { return m_abc_tags; }
     const std::vector<size_t>& get_show_frame_positions() const { return m_show_frame_positions; }
     size_t get_show_frame_count() const { return m_show_frame_positions.size(); }
+    const std::vector<SWFFrame>& get_timeline_frames() const { return m_timeline_frames; }
     const DisplayList& get_display_list() const { return m_display_list; }
     DisplayList& get_display_list() { return m_display_list; }
     const SWFSoundStreamHeader& get_sound_stream_header() const { return m_sound_stream_header; }
@@ -61,6 +83,8 @@ private:
     SWFSoundStreamHeader m_sound_stream_header;
     std::vector<ABCTag> m_abc_tags;
     std::vector<size_t> m_show_frame_positions;
+    SWFFrame m_current_frame_builder;
+    std::vector<SWFFrame> m_timeline_frames;
     DisplayList m_display_list;
     AudioMixer* m_audio_mixer{nullptr};
     AudioStreamDecoder m_stream_decoder;

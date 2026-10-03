@@ -119,8 +119,10 @@ int main() {
     assert(stream_hdr.is_16bit == true);
     assert(stream_hdr.is_stereo == true);
 
-    assert(mixer.get_queued_frames() == 4);
-    printf("  [PASS] Tag 45 and Tag 19 sound block parsed and enqueued into AudioMixer successfully.\n");
+    assert(mixer.get_queued_frames() == 0); // Not decoded immediately during parse
+    parser.apply_frame(0);
+    assert(mixer.get_queued_frames() == 4); // Decoded after applying frame 0
+    printf("  [PASS] Tag 45 and Tag 19 sound block parsed into frame bucket and decoded via apply_frame(0) successfully.\n");
 
     printf("[TEST] All Sound Stream unit tests passed successfully!\n");
     return 0;
