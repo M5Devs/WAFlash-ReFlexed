@@ -165,6 +165,8 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
 
     m_abc_tags.clear();
     m_show_frame_positions.clear();
+    m_timeline_frames.clear();
+    m_current_frame_builder = SWFFrame{};
     m_display_list.clear();
     m_stream_decoder.reset();
     m_sound_stream_header = {};
@@ -172,6 +174,8 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
     auto parse_tag = [this, &uncompressed_data](uint16_t tag_type, size_t tag_offset, uint32_t tag_len, auto& self) -> void {
         if (tag_type == 1) { // TagShowFrame
             m_show_frame_positions.push_back(tag_offset);
+            m_timeline_frames.push_back(std::move(m_current_frame_builder));
+            m_current_frame_builder = SWFFrame{};
         } else if (tag_type == 2 || tag_type == 22 || tag_type == 32) { // TagDefineShape 1, 2, 3
             if (tag_len >= 2) {
                 uint16_t character_id = static_cast<uint16_t>(uncompressed_data[tag_offset]) |
@@ -396,12 +400,7 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
         } else if (tag_type == 19) { // TagSoundStreamBlock
             if (tag_len > 0) {
                 const uint8_t* payload = uncompressed_data.data() + tag_offset;
-                size_t payload_len = tag_len;
-
-                auto decoded_samples = m_stream_decoder.decode_block(payload, payload_len);
-                if (m_audio_mixer && !decoded_samples.empty()) {
-                    m_audio_mixer->queue_samples(decoded_samples.data(), decoded_samples.size());
-                }
+                m_current_frame_builder.sound_stream_block.assign(payload, payload + tag_len);
             }
         } else if (tag_type == 26) { // TagPlaceObject2
             if (tag_len >= 3) {
@@ -426,13 +425,24 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
                     mat = read_swf_matrix(mat_reader);
                 }
 
-                m_display_list.place_object_matrix(depth, character_id, mat);
+                SWFPlaceCommand cmd;
+                cmd.depth = depth;
+                cmd.character_id = character_id;
+                cmd.transform_x = static_cast<int32_t>(mat.tx);
+                cmd.transform_y = static_cast<int32_t>(mat.ty);
+                cmd.has_character = has_character;
+                cmd.has_matrix = has_matrix;
+                cmd.matrix = mat;
+
+                m_current_frame_builder.place_commands.push_back(cmd);
             }
         } else if (tag_type == 28) { // TagRemoveObject2
             if (tag_len >= 2) {
                 uint16_t depth = static_cast<uint16_t>(uncompressed_data[tag_offset]) |
                                 (static_cast<uint16_t>(uncompressed_data[tag_offset + 1]) << 8);
-                m_display_list.remove_object(depth);
+                SWFRemoveCommand cmd;
+                cmd.depth = depth;
+                m_current_frame_builder.remove_commands.push_back(cmd);
             }
         } else if (tag_type == 39) { // TagDefineSprite
             if (tag_len >= 4) {
@@ -579,9 +589,49 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
         offset += tag_length;
 
         if (tag_type == 0) { // TagEnd
+            // Put any remaining commands in m_current_frame_builder into m_timeline_frames
+            if (!m_current_frame_builder.place_commands.empty() ||
+                !m_current_frame_builder.remove_commands.empty() ||
+                !m_current_frame_builder.sound_stream_block.empty()) {
+                m_timeline_frames.push_back(std::move(m_current_frame_builder));
+                m_current_frame_builder = SWFFrame{};
+            }
             break;
         }
     }
 
+    if (!m_current_frame_builder.place_commands.empty() ||
+        !m_current_frame_builder.remove_commands.empty() ||
+        !m_current_frame_builder.sound_stream_block.empty()) {
+        m_timeline_frames.push_back(std::move(m_current_frame_builder));
+        m_current_frame_builder = SWFFrame{};
+    }
+
     return true;
+}
+
+void SWFParser::apply_frame(size_t frame_index) {
+    if (frame_index >= m_timeline_frames.size()) {
+        return;
+    }
+
+    const SWFFrame& frame = m_timeline_frames[frame_index];
+
+    for (const auto& remove_cmd : frame.remove_commands) {
+        m_display_list.remove_object(remove_cmd.depth);
+    }
+
+    for (const auto& place_cmd : frame.place_commands) {
+        m_display_list.place_object_matrix(place_cmd.depth, place_cmd.character_id, place_cmd.matrix);
+    }
+
+    if (!frame.sound_stream_block.empty()) {
+        auto decoded_samples = m_stream_decoder.decode_block(
+            frame.sound_stream_block.data(),
+            frame.sound_stream_block.size()
+        );
+        if (m_audio_mixer && !decoded_samples.empty()) {
+            m_audio_mixer->queue_samples(decoded_samples.data(), decoded_samples.size());
+        }
+    }
 }
