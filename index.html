@@ -4,10 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>WAFlash Re:Flexed — Ultimate Player</title>
-  
-  <!-- أداة فحص الموبايل عشان لو في أي تفصيلة تبان قدامك -->
-  <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-  <script>eruda.init();</script>
 
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
@@ -15,68 +11,16 @@
     header { margin-bottom: 12px; text-align: center; }
     h1 { font-size: 1.6rem; color: #38bdf8; }
     h1 span { color: #f97316; }
-
-    .control-panel {
-      margin-bottom: 12px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      justify-content: center;
-      align-items: center;
-    }
-    .btn {
-      background: #0284c7;
-      color: #fff;
-      border: none;
-      padding: 8px 16px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 0.9rem;
-      font-weight: 600;
-    }
+    .control-panel { margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center; }
+    .btn { background: #0284c7; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9rem; font-weight: 600; }
     .btn:hover { background: #0369a1; }
     .btn-secondary { background: #1e293b; border: 1px solid #334155; }
     .btn-secondary:hover { background: #334155; }
-    
-    .url-input {
-      background: #1e293b;
-      border: 1px solid #334155;
-      color: #fff;
-      padding: 8px 12px;
-      border-radius: 6px;
-      width: 260px;
-      font-size: 0.85rem;
-    }
-
+    .url-input { background: #1e293b; border: 1px solid #334155; color: #fff; padding: 8px 12px; border-radius: 6px; width: 260px; font-size: 0.85rem; }
     #file-picker { display: none; }
-
-    #waflashContainer {
-      position: relative;
-      width: 800px;
-      max-width: 100%;
-      height: 600px;
-      max-height: 75vh;
-      background: #000;
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.7);
-    }
-    #canvas {
-      width: 100%;
-      height: 100%;
-      display: block;
-      outline: none;
-    }
-    #waflashStatus {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      font-size: 1.1rem;
-      color: #38bdf8;
-      text-align: center;
-      pointer-events: none;
-    }
+    #waflashContainer { position: relative; width: 800px; max-width: 100%; height: 600px; max-height: 75vh; background: #000; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.7); }
+    #canvas { width: 100%; height: 100%; display: block; outline: none; image-rendering: pixelated; }
+    #waflashStatus { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 1.1rem; color: #38bdf8; text-align: center; pointer-events: none; padding: 8px; background: rgba(0,0,0,0.5); border-radius: 8px; }
   </style>
 </head>
 <body>
@@ -86,119 +30,264 @@
   </header>
 
   <div class="control-panel">
-    <!-- اختيار ملف محلي أوفلاين من التابلت -->
     <button class="btn" onclick="document.getElementById('file-picker').click()">📂 Select Local SWF</button>
-    <input type="file" id="file-picker" accept=".swf, application/x-shockwave-flash, */*">
-
-    <!-- أو إدخال رابط URL مباشر -->
+    <input type="file" id="file-picker" accept=".swf,application/x-shockwave-flash,*/*">
     <input type="text" id="url-box" class="url-input" placeholder="Or enter SWF URL...">
     <button class="btn btn-secondary" onclick="loadUrlFromBox()">Load URL</button>
-    <button class="btn btn-secondary" id="btn-fullscreen">⛶</button>
+    <button class="btn btn-secondary" id="btn-fullscreen">⛶ Fullscreen</button>
   </div>
 
   <div id="waflashContainer">
-    <canvas class="waflashCanvas" id="canvas" tabindex="1"></canvas>
+    <canvas id="canvas" tabindex="1"></canvas>
     <div id="waflashStatus">Ready. Choose a local file or enter URL.</div>
   </div>
 
+  <!-- ✅ FIX: Load the ACTUAL engine file that exists in this repo -->
+  <script src="./waflash_core.js"></script>
+
   <script>
-    // 🧠 السحر البرمجي: اعتراض XHR لخداع C++ وتسليم الملف المحلي بـ Status 200 OK
-    let inMemorySwfBuffer = null;
-    const VIRTUAL_LOCAL_URL = "https://waflash.local/game.swf";
-
-    const originalXHR = window.XMLHttpRequest;
-    window.XMLHttpRequest = function() {
-      const xhr = new originalXHR();
-      let isLocalIntercept = false;
-
-      const origOpen = xhr.open;
-      xhr.open = function(method, url) {
-        if (url && (url.indexOf("waflash.local") !== -1 || url.indexOf("game.swf") !== -1) && inMemorySwfBuffer) {
-          isLocalIntercept = true;
-        }
-        return origOpen.apply(this, arguments);
-      };
-
-      const origSend = xhr.send;
-      xhr.send = function() {
-        if (isLocalIntercept && inMemorySwfBuffer) {
-          setTimeout(() => {
-            Object.defineProperty(xhr, 'status', { value: 200, writable: false });
-            Object.defineProperty(xhr, 'statusText', { value: 'OK', writable: false });
-            Object.defineProperty(xhr, 'readyState', { value: 4, writable: false });
-            Object.defineProperty(xhr, 'response', { value: inMemorySwfBuffer, writable: false });
-            if (typeof xhr.onreadystatechange === 'function') xhr.onreadystatechange();
-            if (typeof xhr.onload === 'function') xhr.onload();
-          }, 10);
-          return;
-        }
-        return origSend.apply(this, arguments);
-      };
-
-      return xhr;
-    };
-  </script>
-
-  <script type="module" crossorigin="anonymous">
-    import { createWaflash } from './wasm/waflash-player.min.js';
-
-    const canvas = document.getElementById('canvas');
-    const statusText = document.getElementById('waflashStatus');
+    // ─── State ───────────────────────────────────────────────────────────────
+    const canvas     = document.getElementById('canvas');
+    const statusDiv  = document.getElementById('waflashStatus');
     const filePicker = document.getElementById('file-picker');
-    const urlBox = document.getElementById('url-box');
+    const urlBox     = document.getElementById('url-box');
+    const ctx2d      = canvas.getContext('2d');
 
-    // تظبيط التركيز واللمس
-    canvas.addEventListener('click', () => canvas.focus());
+    let wasmModule       = null;   // the loaded Emscripten Module
+    let imageData        = null;   // reused ImageData for putImageData
+    let rafHandle        = null;   // requestAnimationFrame handle
+    let audioCtx         = null;   // Web Audio context
+    let audioScriptNode  = null;   // ScriptProcessorNode for audio pull
+    let gameRunning      = false;
+    let swfFps           = 24;     // default; overridden after load
+    let lastFrameTime    = 0;
+    const MS_PER_FRAME   = () => 1000 / swfFps;
 
-    // 1. فحص إذا كان في رابط مبعوت في الـ Query Parameter
-    const urlParams = new URLSearchParams(window.location.search);
-    const swfParam = urlParams.get('swf');
-
-    if (swfParam) {
-      urlBox.value = swfParam;
-      startEngine(swfParam);
+    // ─── Boot the WASM engine on page load ───────────────────────────────────
+    async function bootEngine() {
+      setStatus('Initializing WASM engine...');
+      try {
+        // ✅ FIX: Call createWAFlashCore (the real exported name) not createWaflash
+        wasmModule = await createWAFlashCore({
+          locateFile: (path) => './' + path,  // find waflash_core.wasm next to the JS
+        });
+        setStatus('Ready. Choose a local file or enter URL.');
+        console.log('✅ WAFlash WASM engine initialized');
+      } catch (e) {
+        setStatus('❌ Engine init failed: ' + e.message);
+        console.error(e);
+      }
     }
 
-    // 2. تشغيل ملف محلي من التابلت (أوفلاين)
-    filePicker.addEventListener('change', (e) => {
-      if (e.target.files.length === 0) return;
-      const file = e.target.files[0];
-      statusText.innerText = `Loading "${file.name}" into memory...`;
+    // ─── Load SWF bytes into the WASM engine ─────────────────────────────────
+    function loadSwfBytes(arrayBuffer, label) {
+      if (!wasmModule) { setStatus('❌ Engine not ready yet!'); return; }
 
+      stopLoop();
+      setStatus(`Loading "${label}"...`);
+
+      const bytes    = new Uint8Array(arrayBuffer);
+      const byteLen  = bytes.length;
+
+      // ✅ Allocate WASM heap memory, copy bytes, call wasm_load_swf
+      const ptr = wasmModule._malloc(byteLen);
+      if (!ptr) { setStatus('❌ WASM malloc failed'); return; }
+
+      wasmModule.HEAPU8.set(bytes, ptr);
+      const ok = wasmModule._wasm_load_swf(ptr, byteLen);
+      wasmModule._free(ptr);
+
+      if (!ok) {
+        setStatus('❌ SWF parse failed — file might be corrupt or unsupported format.');
+        return;
+      }
+
+      // ✅ Resize canvas to match the SWF's declared width/height
+      const swfW = wasmModule._wasm_get_width();
+      const swfH = wasmModule._wasm_get_height();
+      canvas.width  = swfW;
+      canvas.height = swfH;
+      imageData = ctx2d.createImageData(swfW, swfH);
+
+      console.log(`✅ SWF loaded: ${swfW}x${swfH} @ ${swfFps}fps`);
+      setStatus('');
+
+      // ✅ Start Web Audio
+      startAudio();
+
+      // ✅ Start render loop
+      gameRunning = true;
+      lastFrameTime = performance.now();
+      rafHandle = requestAnimationFrame(renderLoop);
+    }
+
+    // ─── Main render + step loop ──────────────────────────────────────────────
+    function renderLoop(now) {
+      if (!gameRunning) return;
+
+      if (now - lastFrameTime >= MS_PER_FRAME()) {
+        lastFrameTime = now;
+
+        // 1. Advance one SWF frame in C++
+        wasmModule._wasm_step_frame();
+
+        // 2. ✅ Read the RGBA framebuffer from WASM memory
+        const fbPtr = wasmModule._wasm_get_framebuffer();
+        const w     = wasmModule._wasm_get_width();
+        const h     = wasmModule._wasm_get_height();
+
+        // The C++ framebuffer is XRGB (0xAARRGGBB), browser ImageData wants RGBA
+        const src  = new Uint32Array(wasmModule.HEAPU8.buffer, fbPtr, w * h);
+        const dst  = new Uint8ClampedArray(imageData.data.buffer);
+        for (let i = 0; i < w * h; i++) {
+          const px   = src[i];
+          const idx  = i * 4;
+          dst[idx    ] = (px >> 16) & 0xFF; // R
+          dst[idx + 1] = (px >>  8) & 0xFF; // G
+          dst[idx + 2] =  px        & 0xFF; // B
+          dst[idx + 3] = 0xFF;              // A — always opaque
+        }
+
+        // 3. Paint to canvas
+        ctx2d.putImageData(imageData, 0, 0);
+      }
+
+      rafHandle = requestAnimationFrame(renderLoop);
+    }
+
+    // ─── Web Audio — pull samples from WASM every audio buffer ───────────────
+    function startAudio() {
+      try {
+        if (audioCtx) { audioCtx.close(); }
+
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
+
+        // ✅ ScriptProcessorNode pulls PCM from wasm_get_audio_samples each buffer
+        const BUFFER_SIZE = 4096;
+        const CHANNELS    = 2;
+        audioScriptNode = audioCtx.createScriptProcessor(BUFFER_SIZE, 0, CHANNELS);
+
+        // Temp int16 buffer to receive samples from C++
+        const pcmPtr = wasmModule._malloc(BUFFER_SIZE * CHANNELS * 2); // int16 = 2 bytes
+
+        audioScriptNode.onaudioprocess = (e) => {
+          const framesWritten = wasmModule._wasm_get_audio_samples(pcmPtr, BUFFER_SIZE);
+          if (framesWritten === 0) return;
+
+          const pcm16 = new Int16Array(wasmModule.HEAPU8.buffer, pcmPtr, BUFFER_SIZE * CHANNELS);
+          const leftOut  = e.outputBuffer.getChannelData(0);
+          const rightOut = e.outputBuffer.getChannelData(1);
+
+          for (let i = 0; i < BUFFER_SIZE; i++) {
+            leftOut[i]  = pcm16[i * 2    ] / 32768.0;
+            rightOut[i] = pcm16[i * 2 + 1] / 32768.0;
+          }
+        };
+
+        audioScriptNode.connect(audioCtx.destination);
+        console.log('✅ Web Audio started (44100Hz stereo)');
+      } catch (e) {
+        console.warn('⚠️ Audio init failed (user gesture needed?):', e);
+      }
+    }
+
+    // ─── Stop everything ─────────────────────────────────────────────────────
+    function stopLoop() {
+      gameRunning = false;
+      if (rafHandle) { cancelAnimationFrame(rafHandle); rafHandle = null; }
+      if (audioScriptNode) { audioScriptNode.disconnect(); audioScriptNode = null; }
+      if (audioCtx) { audioCtx.close(); audioCtx = null; }
+    }
+
+    // ─── Input forwarding ────────────────────────────────────────────────────
+    canvas.addEventListener('mousemove', (e) => {
+      if (!wasmModule || !gameRunning) return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width  / rect.width;
+      const scaleY = canvas.height / rect.height;
+      wasmModule._wasm_send_pointer(
+        Math.round((e.clientX - rect.left) * scaleX),
+        Math.round((e.clientY - rect.top)  * scaleY),
+        e.buttons & 1
+      );
+    });
+    canvas.addEventListener('mousedown', (e) => {
+      if (!wasmModule || !gameRunning) return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width  / rect.width;
+      const scaleY = canvas.height / rect.height;
+      wasmModule._wasm_send_pointer(
+        Math.round((e.clientX - rect.left) * scaleX),
+        Math.round((e.clientY - rect.top)  * scaleY), 1
+      );
+      // ✅ Resume AudioContext on first user gesture (browser policy)
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    });
+    canvas.addEventListener('mouseup', (e) => {
+      if (!wasmModule || !gameRunning) return;
+      const rect = canvas.getBoundingClientRect();
+      wasmModule._wasm_send_pointer(
+        Math.round((e.clientX - rect.left)),
+        Math.round((e.clientY - rect.top)), 0
+      );
+    });
+    canvas.addEventListener('keydown', (e) => {
+      if (!wasmModule || !gameRunning) return;
+      wasmModule._wasm_send_key(e.keyCode, 1);
+      e.preventDefault();
+    });
+    canvas.addEventListener('keyup', (e) => {
+      if (!wasmModule || !gameRunning) return;
+      wasmModule._wasm_send_key(e.keyCode, 0);
+    });
+    canvas.addEventListener('click', () => canvas.focus());
+
+    // ─── File picker ─────────────────────────────────────────────────────────
+    filePicker.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
       const reader = new FileReader();
-      reader.onload = function(evt) {
-        inMemorySwfBuffer = evt.target.result;
-        console.log("✅ Local SWF loaded into Memory:", inMemorySwfBuffer.byteLength, "bytes");
-        // بنمرر الرابط الوهمي اللي المتصفح هيرد عليه من الرامات فورا بـ 200 OK
-        startEngine(VIRTUAL_LOCAL_URL);
-      };
+      reader.onload = (evt) => loadSwfBytes(evt.target.result, file.name);
       reader.readAsArrayBuffer(file);
     });
 
-    window.loadUrlFromBox = function() {
-      const val = urlBox.value.trim();
-      if (val) {
-        window.location.search = "?swf=" + encodeURIComponent(val);
+    // ─── URL loader ──────────────────────────────────────────────────────────
+    window.loadUrlFromBox = async function () {
+      const url = urlBox.value.trim();
+      if (!url) return;
+      setStatus('Fetching: ' + url);
+      try {
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(resp.status + ' ' + resp.statusText);
+        const buf = await resp.arrayBuffer();
+        loadSwfBytes(buf, url.split('/').pop() || 'game.swf');
+      } catch (err) {
+        setStatus('❌ Fetch error: ' + err.message);
       }
     };
 
-    function startEngine(swfUrl) {
-      statusText.innerText = "Initializing WAFlash Engine...";
-      canvas.focus();
-      try {
-        createWaflash(swfUrl, window.wafOptions || {});
-      } catch (err) {
-        console.error(err);
-        statusText.innerText = "Error: " + err.message;
-      }
-    }
+    // ─── Query param autoload ─────────────────────────────────────────────────
+    const urlParams = new URLSearchParams(window.location.search);
+    const swfParam  = urlParams.get('swf');
 
+    // ─── Fullscreen ──────────────────────────────────────────────────────────
     document.getElementById('btn-fullscreen').addEventListener('click', () => {
       const container = document.getElementById('waflashContainer');
-      if (!document.fullscreenElement) {
-        container.requestFullscreen().catch(err => alert(err.message));
-      } else {
-        document.exitFullscreen();
+      if (!document.fullscreenElement) container.requestFullscreen().catch(console.error);
+      else document.exitFullscreen();
+    });
+
+    // ─── Utils ───────────────────────────────────────────────────────────────
+    function setStatus(msg) {
+      statusDiv.textContent  = msg;
+      statusDiv.style.display = msg ? 'block' : 'none';
+    }
+
+    // ─── GO! ─────────────────────────────────────────────────────────────────
+    bootEngine().then(() => {
+      if (swfParam) {
+        urlBox.value = swfParam;
+        window.loadUrlFromBox();
       }
     });
   </script>
