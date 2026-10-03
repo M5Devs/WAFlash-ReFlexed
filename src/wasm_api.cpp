@@ -5,6 +5,7 @@
 #include "audio_mixer.h"
 #include "retro_flash_memory.h"
 #include "display_list.h"
+#include "vector_rasterizer.h"
 #include <vector>
 #include <cstring>
 #include <algorithm>
@@ -34,24 +35,34 @@ static void render_node_recursive(const DisplayList& dl, const std::shared_ptr<D
     if (node->get_type() == DisplayObjectType::Shape) {
         const SWFShapeDefinition* shape = dl.find_shape(node->character_id);
         if (shape) {
-            int32_t pos_x = static_cast<int32_t>(world.tx);
-            int32_t pos_y = static_cast<int32_t>(world.ty);
-
-            int32_t screen_x_min = shape->x_min + pos_x;
-            int32_t screen_x_max = shape->x_max + pos_x;
-            int32_t screen_y_min = shape->y_min + pos_y;
-            int32_t screen_y_max = shape->y_max + pos_y;
-
-            int32_t clip_x_start = std::max<int32_t>(0, screen_x_min);
-            int32_t clip_x_end   = std::min<int32_t>(static_cast<int32_t>(g_wasm_width), screen_x_max);
-            int32_t clip_y_start = std::max<int32_t>(0, screen_y_min);
-            int32_t clip_y_end   = std::min<int32_t>(static_cast<int32_t>(g_wasm_height), screen_y_max);
-
-            for (int32_t y = clip_y_start; y < clip_y_end; ++y) {
-                for (int32_t x = clip_x_start; x < clip_x_end; ++x) {
-                    g_wasm_framebuffer[y * g_wasm_width + x] = shape->fill_color_xrgb;
+            std::vector<Point2D> world_verts;
+            if (!shape->polygon_vertices.empty()) {
+                world_verts.reserve(shape->polygon_vertices.size());
+                for (const auto& v : shape->polygon_vertices) {
+                    float xp = world.a * v.x + world.c * v.y + world.tx;
+                    float yp = world.b * v.x + world.d * v.y + world.ty;
+                    world_verts.push_back({xp, yp});
+                }
+            } else {
+                float x1 = static_cast<float>(shape->x_min);
+                float x2 = static_cast<float>(shape->x_max);
+                float y1 = static_cast<float>(shape->y_min);
+                float y2 = static_cast<float>(shape->y_max);
+                Point2D local_rect[4] = {{x1, y1}, {x2, y1}, {x2, y2}, {x1, y2}};
+                for (int i = 0; i < 4; ++i) {
+                    float xp = world.a * local_rect[i].x + world.c * local_rect[i].y + world.tx;
+                    float yp = world.b * local_rect[i].x + world.d * local_rect[i].y + world.ty;
+                    world_verts.push_back({xp, yp});
                 }
             }
+
+            VectorTessellator::rasterize_polygon(
+                world_verts,
+                shape->fill_color_xrgb,
+                g_wasm_framebuffer.data(),
+                g_wasm_width,
+                g_wasm_height
+            );
         }
     } else if (node->get_type() == DisplayObjectType::MovieClip) {
         auto clip = std::static_pointer_cast<MovieClipInstance>(node);

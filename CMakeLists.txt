@@ -43,6 +43,7 @@ if(EMSCRIPTEN)
         src/display_list.cpp
         src/audio_mixer.cpp
         src/audio_stream_decoder.cpp
+        src/vector_rasterizer.cpp
     )
 
     set_target_properties(waflash_web PROPERTIES
@@ -66,7 +67,7 @@ if(EMSCRIPTEN)
 endif()
 
 # Target 1: Libretro Core Shared Library
-add_library(libretro_flash SHARED src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp)
+add_library(libretro_flash SHARED src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
 
 set_target_properties(libretro_flash PROPERTIES
     OUTPUT_NAME "libretro_flash"
@@ -84,7 +85,7 @@ else()
 endif()
 
 # Target 2: Unit Test Executable - Memory Map
-add_executable(test_memory_map tests/test_memory_map.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp)
+add_executable(test_memory_map tests/test_memory_map.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
 
 target_include_directories(test_memory_map PRIVATE include)
 target_link_libraries(test_memory_map PRIVATE ZLIB::ZLIB)
@@ -98,7 +99,7 @@ endif()
 add_test(NAME test_memory_map COMMAND test_memory_map)
 
 # Target 3: Unit Test Executable - SWF Parser
-add_executable(test_swf_parser tests/test_swf_parser.cpp src/swf_parser.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp)
+add_executable(test_swf_parser tests/test_swf_parser.cpp src/swf_parser.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
 
 target_include_directories(test_swf_parser PRIVATE include)
 target_link_libraries(test_swf_parser PRIVATE ZLIB::ZLIB)
@@ -125,7 +126,7 @@ endif()
 add_test(NAME test_abc_parser COMMAND test_abc_parser)
 
 # Target 5: Unit Test Executable - Video Frame
-add_executable(test_video_frame tests/test_video_frame.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp)
+add_executable(test_video_frame tests/test_video_frame.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
 
 target_include_directories(test_video_frame PRIVATE include)
 target_link_libraries(test_video_frame PRIVATE ZLIB::ZLIB)
@@ -152,7 +153,7 @@ endif()
 add_test(NAME test_input COMMAND test_input)
 
 # Target 7: Unit Test Executable - Timeline Stepper
-add_executable(test_timeline tests/test_timeline.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp)
+add_executable(test_timeline tests/test_timeline.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
 
 target_include_directories(test_timeline PRIVATE include)
 target_link_libraries(test_timeline PRIVATE ZLIB::ZLIB)
@@ -179,7 +180,7 @@ endif()
 add_test(NAME test_avm2_vm COMMAND test_avm2_vm)
 
 # Target 9: Unit Test Executable - DisplayList
-add_executable(test_display_list tests/test_display_list.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp)
+add_executable(test_display_list tests/test_display_list.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
 
 target_include_directories(test_display_list PRIVATE include)
 target_link_libraries(test_display_list PRIVATE ZLIB::ZLIB)
@@ -206,7 +207,7 @@ endif()
 add_test(NAME test_audio COMMAND test_audio)
 
 # Target 11: Unit Test Executable - Serialization
-add_executable(test_serialization tests/test_serialization.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp)
+add_executable(test_serialization tests/test_serialization.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
 
 target_include_directories(test_serialization PRIVATE include)
 target_link_libraries(test_serialization PRIVATE ZLIB::ZLIB)
@@ -220,7 +221,7 @@ endif()
 add_test(NAME test_serialization COMMAND test_serialization)
 
 # Target 12: Unit Test Executable - WASM API
-add_executable(test_wasm_api tests/test_wasm_api.cpp src/wasm_api.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp)
+add_executable(test_wasm_api tests/test_wasm_api.cpp src/wasm_api.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
 
 target_include_directories(test_wasm_api PRIVATE include)
 target_link_libraries(test_wasm_api PRIVATE ZLIB::ZLIB)
@@ -234,7 +235,7 @@ endif()
 add_test(NAME test_wasm_api COMMAND test_wasm_api)
 
 # Target 13: Unit Test Executable - Sound Stream
-add_executable(test_sound_stream tests/test_sound_stream.cpp src/swf_parser.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp)
+add_executable(test_sound_stream tests/test_sound_stream.cpp src/swf_parser.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
 
 target_include_directories(test_sound_stream PRIVATE include)
 target_link_libraries(test_sound_stream PRIVATE ZLIB::ZLIB)
@@ -248,7 +249,7 @@ endif()
 add_test(NAME test_sound_stream COMMAND test_sound_stream)
 
 # Target 14: Unit Test Executable - Sprite
-add_executable(test_sprite tests/test_sprite.cpp src/swf_parser.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp)
+add_executable(test_sprite tests/test_sprite.cpp src/swf_parser.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
 
 target_include_directories(test_sprite PRIVATE include)
 target_link_libraries(test_sprite PRIVATE ZLIB::ZLIB)
@@ -262,7 +263,7 @@ endif()
 add_test(NAME test_sprite COMMAND test_sprite)
 
 # Target 15: Unit Test Executable - Audio Stream
-add_executable(test_audio_stream tests/test_audio_stream.cpp src/audio_stream_decoder.cpp src/swf_parser.cpp src/display_list.cpp src/audio_mixer.cpp)
+add_executable(test_audio_stream tests/test_audio_stream.cpp src/audio_stream_decoder.cpp src/swf_parser.cpp src/display_list.cpp src/audio_mixer.cpp src/vector_rasterizer.cpp)
 
 target_include_directories(test_audio_stream PRIVATE include)
 target_link_libraries(test_audio_stream PRIVATE ZLIB::ZLIB)
@@ -276,7 +277,7 @@ endif()
 add_test(NAME test_audio_stream COMMAND test_audio_stream)
 
 # Target 16: Unit Test Executable - MovieClip & Scene Graph Hierarchy
-add_executable(test_movieclip tests/test_movieclip.cpp src/swf_parser.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp)
+add_executable(test_movieclip tests/test_movieclip.cpp src/swf_parser.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
 
 target_include_directories(test_movieclip PRIVATE include)
 target_link_libraries(test_movieclip PRIVATE ZLIB::ZLIB)
@@ -288,3 +289,16 @@ else()
 endif()
 
 add_test(NAME test_movieclip COMMAND test_movieclip)
+
+# Target 17: Unit Test Executable - Vector Tessellator & Scanline Rasterizer
+add_executable(test_rasterizer tests/test_rasterizer.cpp src/vector_rasterizer.cpp)
+
+target_include_directories(test_rasterizer PRIVATE include)
+
+if(MSVC)
+    target_compile_options(test_rasterizer PRIVATE /W4 /EHs-c- /GR-)
+else()
+    target_compile_options(test_rasterizer PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
+endif()
+
+add_test(NAME test_rasterizer COMMAND test_rasterizer)
