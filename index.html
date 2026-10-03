@@ -36,6 +36,7 @@
     <input type="file" id="file-picker" accept=".swf,application/x-shockwave-flash,*/*">
     <input type="text" id="url-box" class="url-input" placeholder="Or enter SWF URL...">
     <button class="btn btn-secondary" onclick="loadUrlFromBox()">Load URL</button>
+    <button class="btn" onclick="loadSwfUrl('./games/hoshi1.swf')">🌟 Play Hoshi Saga 1</button>
     <button class="btn btn-secondary" id="btn-fullscreen">⛶ Fullscreen</button>
   </div>
 
@@ -286,10 +287,16 @@
     }
 
     // ─── GO! ─────────────────────────────────────────────────────────────────
+    window.loadSwfUrl = function(swfUrl) {
+      urlBox.value = swfUrl;
+      window.loadUrlFromBox();
+    };
+
     bootEngine().then(() => {
       if (swfParam) {
-        urlBox.value = swfParam;
-        window.loadUrlFromBox();
+        loadSwfUrl(swfParam);
+      } else {
+        loadSwfUrl('./games/hoshi1.swf');
       }
     });
   </script>

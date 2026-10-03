@@ -494,6 +494,28 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
 
                 m_display_list.register_sprite(sprite);
             }
+        } else if (tag_type == 11 || tag_type == 37) { // TagDefineText / TagDefineText2
+            if (tag_len >= 2) {
+                uint16_t character_id = static_cast<uint16_t>(uncompressed_data[tag_offset]) |
+                                       (static_cast<uint16_t>(uncompressed_data[tag_offset + 1]) << 8);
+
+                BitReader text_reader(uncompressed_data.data() + tag_offset + 2, tag_len - 2);
+                uint8_t t_nbits = static_cast<uint8_t>(text_reader.read_bits(5));
+                int32_t xmin = text_reader.read_sbits(t_nbits);
+                int32_t xmax = text_reader.read_sbits(t_nbits);
+                int32_t ymin = text_reader.read_sbits(t_nbits);
+                int32_t ymax = text_reader.read_sbits(t_nbits);
+
+                SWFShapeDefinition shape;
+                shape.character_id = character_id;
+                shape.x_min = xmin / 20;
+                shape.x_max = xmax / 20;
+                shape.y_min = ymin / 20;
+                shape.y_max = ymax / 20;
+                shape.fill_color_xrgb = 0x00FFFFFF;
+
+                m_display_list.register_shape(shape);
+            }
         } else if (tag_type == 72 || tag_type == 82) { // TagDoABC2 / TagDoABC
             if (tag_len >= 4) {
                 uint32_t flags = static_cast<uint32_t>(uncompressed_data[tag_offset]) |

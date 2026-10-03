@@ -330,3 +330,31 @@ else()
 endif()
 
 add_test(NAME test_ruffle_parity COMMAND test_ruffle_parity)
+
+# Target 20: Integration Test Executable - Real-World Flash Benchmark (Hoshi Saga 1)
+add_executable(test_hoshi_saga tests/test_hoshi_saga.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
+
+target_include_directories(test_hoshi_saga PRIVATE include)
+target_link_libraries(test_hoshi_saga PRIVATE ZLIB::ZLIB)
+
+if(MSVC)
+    target_compile_options(test_hoshi_saga PRIVATE /W4 /EHs-c- /GR-)
+else()
+    target_compile_options(test_hoshi_saga PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
+endif()
+
+add_test(NAME test_hoshi_saga COMMAND test_hoshi_saga)
+
+# Target 21: Integration Test Executable - Hoshi Saga 1 Gameplay & Button Interaction
+add_executable(test_hoshi_gameplay tests/test_hoshi_gameplay.cpp src/core_stub.cpp src/swf_parser.cpp src/abc_parser.cpp src/input_manager.cpp src/avm2_vm.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
+
+target_include_directories(test_hoshi_gameplay PRIVATE include)
+target_link_libraries(test_hoshi_gameplay PRIVATE ZLIB::ZLIB)
+
+if(MSVC)
+    target_compile_options(test_hoshi_gameplay PRIVATE /W4 /EHs-c- /GR-)
+else()
+    target_compile_options(test_hoshi_gameplay PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
+endif()
+
+add_test(NAME test_hoshi_gameplay COMMAND test_hoshi_gameplay)

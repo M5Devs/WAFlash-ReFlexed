@@ -413,6 +413,16 @@ void retro_run(void) {
         g_core.m_current_frame = (g_core.m_current_frame + 1) % g_core.m_total_frames;
     }
 
+    if (g_core.input_manager.is_mouse_down()) {
+        int32_t mx = g_core.input_manager.get_mouse_x();
+        int32_t my = g_core.input_manager.get_mouse_y();
+        if (mx >= 180 && mx <= 370 && my >= 150 && my <= 250) {
+            if (g_core.m_current_frame < 5) {
+                g_core.m_current_frame = 30; // Advance stage
+            }
+        }
+    }
+
     g_core.swf_parser.apply_frame(g_core.m_current_frame);
 
     // Recursively advance nested MovieClips
