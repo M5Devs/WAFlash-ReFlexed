@@ -611,9 +611,7 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
 }
 
 void SWFParser::apply_frame(size_t frame_index) {
-    if (frame_index >= m_timeline_frames.size()) {
-        return;
-    }
+    if (frame_index >= m_timeline_frames.size()) return;
 
     const SWFFrame& frame = m_timeline_frames[frame_index];
 
@@ -622,7 +620,16 @@ void SWFParser::apply_frame(size_t frame_index) {
     }
 
     for (const auto& place_cmd : frame.place_commands) {
-        m_display_list.place_object_matrix(place_cmd.depth, place_cmd.character_id, place_cmd.matrix);
+        if (place_cmd.has_character && place_cmd.character_id != 0) {
+            // New object — place fresh at this depth
+            m_display_list.place_object_matrix(
+                place_cmd.depth, place_cmd.character_id, place_cmd.matrix);
+        } else if (!place_cmd.has_character) {
+            // No new character — just update matrix of existing object at depth
+            if (place_cmd.has_matrix) {
+                m_display_list.update_object_matrix(place_cmd.depth, place_cmd.matrix);
+            }
+        }
     }
 
     if (!frame.sound_stream_block.empty()) {
