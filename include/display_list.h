@@ -9,6 +9,7 @@
 #include <string>
 #include <algorithm>
 #include "serialization.h"
+#include "vector_rasterizer.h"
 
 struct Matrix2D {
     float a{1.0f}, b{0.0f};
@@ -41,6 +42,7 @@ struct SWFShapeDefinition {
     int32_t y_min{0};
     int32_t y_max{0};
     uint32_t fill_color_xrgb{0x00FFFFFF};
+    std::vector<Point2D> polygon_vertices;
 };
 
 struct DisplayObject {

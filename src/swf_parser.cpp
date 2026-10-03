@@ -1,4 +1,5 @@
 #include "swf_parser.h"
+#include "vector_rasterizer.h"
 #include <cstring>
 #include <cmath>
 #include <algorithm>
@@ -7,6 +8,8 @@
 class BitReader {
 public:
     BitReader(const uint8_t* data, size_t size) : m_data(data), m_size(size), m_byte_offset(0), m_bit_offset(0) {}
+
+    bool is_eof() const { return m_byte_offset >= m_size; }
 
     uint32_t read_bits(uint8_t count) {
         uint32_t result = 0;
@@ -50,6 +53,7 @@ private:
 
 static Matrix2D read_swf_matrix(BitReader& mat_reader) {
     Matrix2D mat;
+    if (mat_reader.is_eof()) return mat;
     bool has_scale = mat_reader.read_bits(1) != 0;
     if (has_scale) {
         uint8_t n_scale_bits = static_cast<uint8_t>(mat_reader.read_bits(5));
@@ -142,7 +146,6 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
 
     // Parse FrameRate & FrameCount
     size_t offset = 0;
-    // Calculate byte offset based on RECT length
     size_t rect_bit_len = 5 + 4 * n_bits;
     offset = (rect_bit_len + 7) / 8;
 
@@ -183,39 +186,158 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
 
                 uint32_t fill_color = 0x00FFFFFF;
 
-                // Parse shape records for fill styles if available
                 shape_reader.align_byte();
 
-                // Simple heuristic scan for solid color fill in TagDefineShape3 or TagDefineShape
-                size_t payload_idx = tag_offset + 2 + ((5 + 4 * shape_nbits + 7) / 8);
-                if (payload_idx + 1 < tag_offset + tag_len) {
-                    uint8_t fill_style_count = uncompressed_data[payload_idx];
-                    if (fill_style_count > 0 && fill_style_count < 0xFF) {
-                        payload_idx++;
-                        uint8_t fill_type = uncompressed_data[payload_idx];
+                auto parse_fill_style_array = [&shape_reader, tag_type, &fill_color](auto& self_fill) -> void {
+                    (void)self_fill;
+                    if (shape_reader.is_eof()) return;
+                    uint32_t fill_count = shape_reader.read_bits(8);
+                    if (fill_count == 0xFF) {
+                        fill_count = shape_reader.read_bits(16);
+                    }
+                    for (uint32_t i = 0; i < fill_count && !shape_reader.is_eof(); ++i) {
+                        uint8_t fill_type = static_cast<uint8_t>(shape_reader.read_bits(8));
                         if (fill_type == 0x00) { // Solid fill
-                            payload_idx++;
                             if (tag_type == 32) { // RGBA
-                                if (payload_idx + 4 <= tag_offset + tag_len) {
-                                    uint8_t r = uncompressed_data[payload_idx];
-                                    uint8_t g = uncompressed_data[payload_idx + 1];
-                                    uint8_t b = uncompressed_data[payload_idx + 2];
-                                    uint8_t a = uncompressed_data[payload_idx + 3];
+                                uint8_t r = static_cast<uint8_t>(shape_reader.read_bits(8));
+                                uint8_t g = static_cast<uint8_t>(shape_reader.read_bits(8));
+                                uint8_t b = static_cast<uint8_t>(shape_reader.read_bits(8));
+                                uint8_t a = static_cast<uint8_t>(shape_reader.read_bits(8));
+                                if (i == 0) {
                                     fill_color = (static_cast<uint32_t>(a) << 24) |
                                                  (static_cast<uint32_t>(r) << 16) |
                                                  (static_cast<uint32_t>(g) << 8) |
                                                  static_cast<uint32_t>(b);
                                 }
-                            } else {
-                                if (payload_idx + 3 <= tag_offset + tag_len) {
-                                    uint8_t r = uncompressed_data[payload_idx];
-                                    uint8_t g = uncompressed_data[payload_idx + 1];
-                                    uint8_t b = uncompressed_data[payload_idx + 2];
+                            } else { // RGB
+                                uint8_t r = static_cast<uint8_t>(shape_reader.read_bits(8));
+                                uint8_t g = static_cast<uint8_t>(shape_reader.read_bits(8));
+                                uint8_t b = static_cast<uint8_t>(shape_reader.read_bits(8));
+                                if (i == 0) {
                                     fill_color = (static_cast<uint32_t>(r) << 16) |
                                                  (static_cast<uint32_t>(g) << 8) |
                                                  static_cast<uint32_t>(b);
                                 }
                             }
+                        } else if (fill_type == 0x10 || fill_type == 0x12 || fill_type == 0x13) {
+                            read_swf_matrix(shape_reader);
+                            shape_reader.read_bits(8);
+                            uint8_t num_grads = static_cast<uint8_t>(shape_reader.read_bits(8));
+                            for (uint8_t g_idx = 0; g_idx < num_grads && !shape_reader.is_eof(); ++g_idx) {
+                                shape_reader.read_bits(8);
+                                shape_reader.read_bits(tag_type == 32 ? 32 : 24);
+                            }
+                        } else if (fill_type == 0x40 || fill_type == 0x41 || fill_type == 0x42 || fill_type == 0x43) {
+                            shape_reader.read_bits(16);
+                            read_swf_matrix(shape_reader);
+                        }
+                    }
+                };
+
+                auto parse_line_style_array = [&shape_reader, tag_type]() {
+                    if (shape_reader.is_eof()) return;
+                    uint32_t line_count = shape_reader.read_bits(8);
+                    if (line_count == 0xFF) {
+                        line_count = shape_reader.read_bits(16);
+                    }
+                    for (uint32_t i = 0; i < line_count && !shape_reader.is_eof(); ++i) {
+                        shape_reader.read_bits(16);
+                        if (tag_type == 32) {
+                            shape_reader.read_bits(32);
+                        } else {
+                            shape_reader.read_bits(24);
+                        }
+                    }
+                };
+
+                parse_fill_style_array(parse_fill_style_array);
+                parse_line_style_array();
+
+                uint8_t num_fill_bits = static_cast<uint8_t>(shape_reader.read_bits(4));
+                uint8_t num_line_bits = static_cast<uint8_t>(shape_reader.read_bits(4));
+
+                std::vector<Point2D> polygon_vertices;
+                float cur_x = 0.0f;
+                float cur_y = 0.0f;
+
+                int max_records = 10000;
+                while (max_records-- > 0 && !shape_reader.is_eof()) {
+                    uint8_t type_flag = static_cast<uint8_t>(shape_reader.read_bits(1));
+                    if (type_flag == 0) { // StyleChange or EndShape
+                        uint8_t state_new_styles  = static_cast<uint8_t>(shape_reader.read_bits(1));
+                        uint8_t state_line_style  = static_cast<uint8_t>(shape_reader.read_bits(1));
+                        uint8_t state_fill_style1 = static_cast<uint8_t>(shape_reader.read_bits(1));
+                        uint8_t state_fill_style0 = static_cast<uint8_t>(shape_reader.read_bits(1));
+                        uint8_t state_move_to     = static_cast<uint8_t>(shape_reader.read_bits(1));
+
+                        if (!state_new_styles && !state_line_style && !state_fill_style1 && !state_fill_style0 && !state_move_to) {
+                            break; // EndShapeRecord
+                        }
+
+                        if (state_move_to) {
+                            uint8_t move_bits = static_cast<uint8_t>(shape_reader.read_bits(5));
+                            int32_t move_x = shape_reader.read_sbits(move_bits);
+                            int32_t move_y = shape_reader.read_sbits(move_bits);
+                            cur_x = static_cast<float>(move_x) / 20.0f;
+                            cur_y = static_cast<float>(move_y) / 20.0f;
+                            if (polygon_vertices.empty()) {
+                                polygon_vertices.push_back({cur_x, cur_y});
+                            }
+                        }
+                        if (state_fill_style0 && num_fill_bits > 0) {
+                            shape_reader.read_bits(num_fill_bits);
+                        }
+                        if (state_fill_style1 && num_fill_bits > 0) {
+                            shape_reader.read_bits(num_fill_bits);
+                        }
+                        if (state_line_style && num_line_bits > 0) {
+                            shape_reader.read_bits(num_line_bits);
+                        }
+                        if (state_new_styles) {
+                            parse_fill_style_array(parse_fill_style_array);
+                            parse_line_style_array();
+                            num_fill_bits = static_cast<uint8_t>(shape_reader.read_bits(4));
+                            num_line_bits = static_cast<uint8_t>(shape_reader.read_bits(4));
+                        }
+                    } else { // Edge Record
+                        uint8_t straight_flag = static_cast<uint8_t>(shape_reader.read_bits(1));
+                        if (straight_flag == 1) { // StraightEdgeRecord
+                            uint8_t num_bits = static_cast<uint8_t>(shape_reader.read_bits(4));
+                            uint8_t n_bits = num_bits + 2;
+                            uint8_t general_line_flag = static_cast<uint8_t>(shape_reader.read_bits(1));
+                            int32_t delta_x = 0;
+                            int32_t delta_y = 0;
+                            if (general_line_flag == 1) {
+                                delta_x = shape_reader.read_sbits(n_bits);
+                                delta_y = shape_reader.read_sbits(n_bits);
+                            } else {
+                                uint8_t vert_line_flag = static_cast<uint8_t>(shape_reader.read_bits(1));
+                                if (vert_line_flag == 1) {
+                                    delta_y = shape_reader.read_sbits(n_bits);
+                                } else {
+                                    delta_x = shape_reader.read_sbits(n_bits);
+                                }
+                            }
+                            cur_x += static_cast<float>(delta_x) / 20.0f;
+                            cur_y += static_cast<float>(delta_y) / 20.0f;
+                            polygon_vertices.push_back({cur_x, cur_y});
+                        } else { // CurvedEdgeRecord
+                            uint8_t num_bits = static_cast<uint8_t>(shape_reader.read_bits(4));
+                            uint8_t n_bits = num_bits + 2;
+                            int32_t control_delta_x = shape_reader.read_sbits(n_bits);
+                            int32_t control_delta_y = shape_reader.read_sbits(n_bits);
+                            int32_t anchor_delta_x  = shape_reader.read_sbits(n_bits);
+                            int32_t anchor_delta_y  = shape_reader.read_sbits(n_bits);
+
+                            Point2D p0 = {cur_x, cur_y};
+                            Point2D p1 = {cur_x + static_cast<float>(control_delta_x) / 20.0f,
+                                          cur_y + static_cast<float>(control_delta_y) / 20.0f};
+                            Point2D p2 = {p1.x + static_cast<float>(anchor_delta_x) / 20.0f,
+                                          p1.y + static_cast<float>(anchor_delta_y) / 20.0f};
+
+                            VectorTessellator::subdivide_quadratic_bezier(p0, p1, p2, polygon_vertices);
+                            cur_x = p2.x;
+                            cur_y = p2.y;
                         }
                     }
                 }
@@ -227,6 +349,7 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
                 shape.y_min = s_ymin / 20;
                 shape.y_max = s_ymax / 20;
                 shape.fill_color_xrgb = fill_color;
+                shape.polygon_vertices = std::move(polygon_vertices);
 
                 m_display_list.register_shape(shape);
             }
@@ -371,7 +494,6 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
                             sub_obj.transform_y = static_cast<int32_t>(mat.ty);
                             sub_obj.matrix = mat;
 
-                            // Insert or update at depth
                             auto existing = std::find_if(sprite.sub_objects.begin(), sprite.sub_objects.end(),
                                 [depth](const DisplayObject& obj) { return obj.depth == depth; });
                             if (existing != sprite.sub_objects.end()) {
@@ -395,7 +517,6 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
                         }
                     }
 
-                    // Recursively process other nested tags in sprite
                     self(sub_type, sub_offset, sub_len, self);
 
                     sub_offset += sub_len;
