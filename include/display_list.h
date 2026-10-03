@@ -136,6 +136,7 @@ public:
     void register_sprite(const SWFSpriteDefinition& sprite);
     void place_object(uint16_t depth, uint16_t character_id, int32_t x, int32_t y);
     void place_object_matrix(uint16_t depth, uint16_t character_id, const Matrix2D& mat);
+    void update_object_matrix(uint16_t depth, const Matrix2D& mat);
     void remove_object(uint16_t depth);
     void clear();
 
