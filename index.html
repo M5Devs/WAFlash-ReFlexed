@@ -309,8 +309,25 @@
       const rect = canvas.getBoundingClientRect();
       const scaleX = canvas.width / rect.width;
       const scaleY = canvas.height / rect.height;
-      const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
-      const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+
+      let clientX = evt.clientX;
+      let clientY = evt.clientY;
+
+      // التعامل مع لمسات التاتش بأمان تام
+      if (evt.touches && evt.touches.length > 0) {
+        clientX = evt.touches[0].clientX;
+        clientY = evt.touches[0].clientY;
+      } else if (evt.changedTouches && evt.changedTouches.length > 0) {
+        // دي اللي بتنقذنا لما ترفع صباعك في touchend!
+        clientX = evt.changedTouches[0].clientX;
+        clientY = evt.changedTouches[0].clientY;
+      }
+
+      // حماية إضافية لو القيمة طلعت غير معرفة
+      if (clientX === undefined || clientY === undefined) {
+        return { x: 0, y: 0 };
+      }
+
       return {
         x: Math.round((clientX - rect.left) * scaleX),
         y: Math.round((clientY - rect.top) * scaleY)
