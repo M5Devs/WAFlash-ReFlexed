@@ -48,6 +48,32 @@ private:
     uint8_t m_bit_offset;
 };
 
+static Matrix2D read_swf_matrix(BitReader& mat_reader) {
+    Matrix2D mat;
+    bool has_scale = mat_reader.read_bits(1) != 0;
+    if (has_scale) {
+        uint8_t n_scale_bits = static_cast<uint8_t>(mat_reader.read_bits(5));
+        int32_t scale_x = mat_reader.read_sbits(n_scale_bits);
+        int32_t scale_y = mat_reader.read_sbits(n_scale_bits);
+        mat.a = static_cast<float>(scale_x) / 65536.0f;
+        mat.d = static_cast<float>(scale_y) / 65536.0f;
+    }
+    bool has_rotate = mat_reader.read_bits(1) != 0;
+    if (has_rotate) {
+        uint8_t n_rotate_bits = static_cast<uint8_t>(mat_reader.read_bits(5));
+        int32_t skew_0 = mat_reader.read_sbits(n_rotate_bits);
+        int32_t skew_1 = mat_reader.read_sbits(n_rotate_bits);
+        mat.b = static_cast<float>(skew_0) / 65536.0f;
+        mat.c = static_cast<float>(skew_1) / 65536.0f;
+    }
+    uint8_t n_trans_bits = static_cast<uint8_t>(mat_reader.read_bits(5));
+    int32_t translate_x = mat_reader.read_sbits(n_trans_bits);
+    int32_t translate_y = mat_reader.read_sbits(n_trans_bits);
+    mat.tx = static_cast<float>(translate_x) / 20.0f;
+    mat.ty = static_cast<float>(translate_y) / 20.0f;
+    return mat;
+}
+
 SWFParser::SWFParser() : m_audio_mixer(nullptr) {
     m_header = {};
     m_sound_stream_header = {};
@@ -215,10 +241,6 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
             }
         } else if (tag_type == 18 || tag_type == 45) { // TagSoundStreamHead (18) / TagSoundStreamHead2 (45)
             if (tag_len >= 4) {
-                // Header format for Tag 45:
-                // Byte 0: Mix/Playback format (Bits 0-1: rate, Bit 2: size, Bit 3: channels)
-                // Byte 1: Stream format (Bits 0-1: rate, Bit 2: size, Bit 3: channels, Bits 4-7: format)
-                // Bytes 2-3: SampleCount (UI16)
                 uint8_t stream_flags = uncompressed_data[tag_offset + 1];
                 uint8_t rate_code = (stream_flags >> 2) & 0x03;
                 static const uint32_t rates[] = {5512, 11025, 22050, 44100};
@@ -275,32 +297,13 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
                     p_idx += 2;
                 }
 
-                int32_t translate_x = 0;
-                int32_t translate_y = 0;
-
+                Matrix2D mat;
                 if (has_matrix && p_idx < tag_offset + tag_len) {
                     BitReader mat_reader(uncompressed_data.data() + p_idx, (tag_offset + tag_len) - p_idx);
-                    bool has_scale = mat_reader.read_bits(1) != 0;
-                    if (has_scale) {
-                        uint8_t n_scale_bits = static_cast<uint8_t>(mat_reader.read_bits(5));
-                        mat_reader.read_sbits(n_scale_bits);
-                        mat_reader.read_sbits(n_scale_bits);
-                    }
-                    bool has_rotate = mat_reader.read_bits(1) != 0;
-                    if (has_rotate) {
-                        uint8_t n_rotate_bits = static_cast<uint8_t>(mat_reader.read_bits(5));
-                        mat_reader.read_sbits(n_rotate_bits);
-                        mat_reader.read_sbits(n_rotate_bits);
-                    }
-                    uint8_t n_trans_bits = static_cast<uint8_t>(mat_reader.read_bits(5));
-                    translate_x = mat_reader.read_sbits(n_trans_bits);
-                    translate_y = mat_reader.read_sbits(n_trans_bits);
+                    mat = read_swf_matrix(mat_reader);
                 }
 
-                int32_t trans_x_px = translate_x / 20;
-                int32_t trans_y_px = translate_y / 20;
-
-                m_display_list.place_object(depth, character_id, trans_x_px, trans_y_px);
+                m_display_list.place_object_matrix(depth, character_id, mat);
             }
         } else if (tag_type == 28) { // TagRemoveObject2
             if (tag_len >= 2) {
@@ -355,30 +358,40 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
                                 p_idx += 2;
                             }
 
-                            int32_t tx = 0, ty = 0;
+                            Matrix2D mat;
                             if (has_mat && p_idx < sub_offset + sub_len) {
                                 BitReader mat_reader(uncompressed_data.data() + p_idx, (sub_offset + sub_len) - p_idx);
-                                if (mat_reader.read_bits(1) != 0) {
-                                    uint8_t n_bits = static_cast<uint8_t>(mat_reader.read_bits(5));
-                                    mat_reader.read_sbits(n_bits);
-                                    mat_reader.read_sbits(n_bits);
-                                }
-                                if (mat_reader.read_bits(1) != 0) {
-                                    uint8_t n_bits = static_cast<uint8_t>(mat_reader.read_bits(5));
-                                    mat_reader.read_sbits(n_bits);
-                                    mat_reader.read_sbits(n_bits);
-                                }
-                                uint8_t n_trans_bits = static_cast<uint8_t>(mat_reader.read_bits(5));
-                                tx = mat_reader.read_sbits(n_trans_bits);
-                                ty = mat_reader.read_sbits(n_trans_bits);
+                                mat = read_swf_matrix(mat_reader);
                             }
 
                             DisplayObject sub_obj;
                             sub_obj.depth = depth;
                             sub_obj.character_id = char_id;
-                            sub_obj.transform_x = tx / 20;
-                            sub_obj.transform_y = ty / 20;
-                            sprite.sub_objects.push_back(sub_obj);
+                            sub_obj.transform_x = static_cast<int32_t>(mat.tx);
+                            sub_obj.transform_y = static_cast<int32_t>(mat.ty);
+                            sub_obj.matrix = mat;
+
+                            // Insert or update at depth
+                            auto existing = std::find_if(sprite.sub_objects.begin(), sprite.sub_objects.end(),
+                                [depth](const DisplayObject& obj) { return obj.depth == depth; });
+                            if (existing != sprite.sub_objects.end()) {
+                                if (char_id != 0) existing->character_id = char_id;
+                                existing->transform_x = sub_obj.transform_x;
+                                existing->transform_y = sub_obj.transform_y;
+                                existing->matrix = mat;
+                            } else {
+                                sprite.sub_objects.push_back(sub_obj);
+                            }
+                        }
+                    } else if (sub_type == 28) { // TagRemoveObject2 inside sprite
+                        if (sub_len >= 2) {
+                            uint16_t depth = static_cast<uint16_t>(uncompressed_data[sub_offset]) |
+                                            (static_cast<uint16_t>(uncompressed_data[sub_offset + 1]) << 8);
+                            sprite.sub_objects.erase(
+                                std::remove_if(sprite.sub_objects.begin(), sprite.sub_objects.end(),
+                                    [depth](const DisplayObject& obj) { return obj.depth == depth; }),
+                                sprite.sub_objects.end()
+                            );
                         }
                     }
 
