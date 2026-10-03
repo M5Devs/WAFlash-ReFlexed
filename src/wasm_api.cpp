@@ -26,6 +26,35 @@ static int32_t               g_wasm_mouse_x = 0;
 static int32_t               g_wasm_mouse_y = 0;
 static bool                  g_wasm_mouse_pressed = false;
 
+static void render_character(const DisplayList& dl, uint16_t character_id, int32_t pos_x, int32_t pos_y) {
+    const SWFShapeDefinition* shape = dl.find_shape(character_id);
+    if (shape) {
+        int32_t screen_x_min = shape->x_min + pos_x;
+        int32_t screen_x_max = shape->x_max + pos_x;
+        int32_t screen_y_min = shape->y_min + pos_y;
+        int32_t screen_y_max = shape->y_max + pos_y;
+
+        int32_t clip_x_start = std::max<int32_t>(0, screen_x_min);
+        int32_t clip_x_end   = std::min<int32_t>(static_cast<int32_t>(g_wasm_width), screen_x_max);
+        int32_t clip_y_start = std::max<int32_t>(0, screen_y_min);
+        int32_t clip_y_end   = std::min<int32_t>(static_cast<int32_t>(g_wasm_height), screen_y_max);
+
+        for (int32_t y = clip_y_start; y < clip_y_end; ++y) {
+            for (int32_t x = clip_x_start; x < clip_x_end; ++x) {
+                g_wasm_framebuffer[y * g_wasm_width + x] = shape->fill_color_xrgb;
+            }
+        }
+        return;
+    }
+
+    const SWFSpriteDefinition* sprite = dl.find_sprite(character_id);
+    if (sprite) {
+        for (const auto& sub_obj : sprite->sub_objects) {
+            render_character(dl, sub_obj.character_id, pos_x + sub_obj.transform_x, pos_y + sub_obj.transform_y);
+        }
+    }
+}
+
 extern "C" {
 
 int wasm_load_swf(const uint8_t* data, size_t size) {
@@ -35,6 +64,8 @@ int wasm_load_swf(const uint8_t* data, size_t size) {
 
     std::memset(&g_wasm_memory_map, 0, sizeof(RetroFlashMemoryMap));
     g_wasm_game_loaded = false;
+
+    g_wasm_swf_parser.set_audio_mixer(&g_wasm_audio_mixer);
 
     if (!g_wasm_swf_parser.parse(data, size)) {
         return 0;
@@ -74,24 +105,7 @@ void wasm_step_frame(void) {
     const DisplayList& dl = g_wasm_swf_parser.get_display_list();
     for (const auto& pair : dl.get_active_objects()) {
         const DisplayObject& obj = pair.second;
-        const SWFShapeDefinition* shape = dl.find_shape(obj.character_id);
-        if (!shape) continue;
-
-        int32_t screen_x_min = shape->x_min + obj.transform_x;
-        int32_t screen_x_max = shape->x_max + obj.transform_x;
-        int32_t screen_y_min = shape->y_min + obj.transform_y;
-        int32_t screen_y_max = shape->y_max + obj.transform_y;
-
-        int32_t clip_x_start = std::max<int32_t>(0, screen_x_min);
-        int32_t clip_x_end   = std::min<int32_t>(static_cast<int32_t>(g_wasm_width), screen_x_max);
-        int32_t clip_y_start = std::max<int32_t>(0, screen_y_min);
-        int32_t clip_y_end   = std::min<int32_t>(static_cast<int32_t>(g_wasm_height), screen_y_max);
-
-        for (int32_t y = clip_y_start; y < clip_y_end; ++y) {
-            for (int32_t x = clip_x_start; x < clip_x_end; ++x) {
-                g_wasm_framebuffer[y * g_wasm_width + x] = shape->fill_color_xrgb;
-            }
-        }
+        render_character(dl, obj.character_id, obj.transform_x, obj.transform_y);
     }
 }
 
@@ -125,6 +139,11 @@ uint32_t wasm_get_player_score(void) {
 
 uint32_t wasm_get_player_hp(void) {
     return g_wasm_memory_map.player_hp;
+}
+
+size_t wasm_get_audio_samples(int16_t* out_buffer, size_t num_frames) {
+    if (!out_buffer || num_frames == 0) return 0;
+    return g_wasm_audio_mixer.generate_audio_frame(out_buffer, num_frames);
 }
 
 }

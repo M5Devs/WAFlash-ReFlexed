@@ -58,8 +58,8 @@ if(EMSCRIPTEN)
         "-sEXPORT_NAME=\"createWAFlashCore\""
         "-sALLOW_MEMORY_GROWTH=1"
         "-sUSE_ZLIB=1"
-        "-sEXPORTED_FUNCTIONS=['_malloc','_free']"
-        "-sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue','HEAPU8','HEAPU32']"
+        "-sEXPORTED_FUNCTIONS=['_malloc','_free','_wasm_get_audio_samples']"
+        "-sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue','HEAPU8','HEAP16','HEAPU32']"
         "-O3"
     )
 endif()
@@ -97,7 +97,7 @@ endif()
 add_test(NAME test_memory_map COMMAND test_memory_map)
 
 # Target 3: Unit Test Executable - SWF Parser
-add_executable(test_swf_parser tests/test_swf_parser.cpp src/swf_parser.cpp src/display_list.cpp)
+add_executable(test_swf_parser tests/test_swf_parser.cpp src/swf_parser.cpp src/display_list.cpp src/audio_mixer.cpp)
 
 target_include_directories(test_swf_parser PRIVATE include)
 target_link_libraries(test_swf_parser PRIVATE ZLIB::ZLIB)
@@ -231,3 +231,31 @@ else()
 endif()
 
 add_test(NAME test_wasm_api COMMAND test_wasm_api)
+
+# Target 13: Unit Test Executable - Sound Stream
+add_executable(test_sound_stream tests/test_sound_stream.cpp src/swf_parser.cpp src/display_list.cpp src/audio_mixer.cpp)
+
+target_include_directories(test_sound_stream PRIVATE include)
+target_link_libraries(test_sound_stream PRIVATE ZLIB::ZLIB)
+
+if(MSVC)
+    target_compile_options(test_sound_stream PRIVATE /W4 /EHs-c- /GR-)
+else()
+    target_compile_options(test_sound_stream PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
+endif()
+
+add_test(NAME test_sound_stream COMMAND test_sound_stream)
+
+# Target 14: Unit Test Executable - Sprite
+add_executable(test_sprite tests/test_sprite.cpp src/swf_parser.cpp src/display_list.cpp src/audio_mixer.cpp)
+
+target_include_directories(test_sprite PRIVATE include)
+target_link_libraries(test_sprite PRIVATE ZLIB::ZLIB)
+
+if(MSVC)
+    target_compile_options(test_sprite PRIVATE /W4 /EHs-c- /GR-)
+else()
+    target_compile_options(test_sprite PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
+endif()
+
+add_test(NAME test_sprite COMMAND test_sprite)
