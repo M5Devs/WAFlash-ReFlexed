@@ -316,3 +316,17 @@ else()
 endif()
 
 add_test(NAME test_frame_timeline COMMAND test_frame_timeline)
+
+# Target 19: Unit Test Executable - Ruffle Parity PlaceObject2 & Fixed-Point Matrix Decoding
+add_executable(test_ruffle_parity tests/test_ruffle_parity.cpp src/swf_parser.cpp src/display_list.cpp src/audio_mixer.cpp src/audio_stream_decoder.cpp src/vector_rasterizer.cpp)
+
+target_include_directories(test_ruffle_parity PRIVATE include)
+target_link_libraries(test_ruffle_parity PRIVATE ZLIB::ZLIB)
+
+if(MSVC)
+    target_compile_options(test_ruffle_parity PRIVATE /W4 /EHs-c- /GR-)
+else()
+    target_compile_options(test_ruffle_parity PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
+endif()
+
+add_test(NAME test_ruffle_parity COMMAND test_ruffle_parity)

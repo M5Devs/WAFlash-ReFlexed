@@ -75,19 +75,6 @@ static void render_node_recursive(const DisplayList& dl,
     }
 }
 
-// ─── FIX: Rebuild DisplayList cumulatively from frame 0 → target_frame ───────
-// SWF is a cumulative model: each frame's PlaceObject/RemoveObject commands
-// layer ON TOP of all previous frames. Jumping to frame N requires replaying
-// frames 0..N in order so the DisplayList reflects the correct accumulated state.
-static void rebuild_display_list_to(size_t target_frame) {
-    g_wasm_swf_parser.get_display_list().clear();
-    const auto& frames = g_wasm_swf_parser.get_timeline_frames();
-    size_t limit = std::min(target_frame + 1, frames.size());
-    for (size_t f = 0; f < limit; ++f) {
-        g_wasm_swf_parser.apply_frame(f);
-    }
-}
-
 // ─── C API ───────────────────────────────────────────────────────────────────
 
 extern "C" {
@@ -98,10 +85,7 @@ int wasm_load_swf(const uint8_t* data, size_t size) {
     std::memset(&g_wasm_memory_map, 0, sizeof(RetroFlashMemoryMap));
     g_wasm_game_loaded = false;
 
-    // FIX: reset audio BEFORE parse so stream decoder starts clean
     g_wasm_audio_mixer.reset();
-
-    // set_audio_mixer must be called before parse so stream blocks get decoded
     g_wasm_swf_parser.set_audio_mixer(&g_wasm_audio_mixer);
 
     if (!g_wasm_swf_parser.parse(data, size)) return 0;
@@ -122,8 +106,7 @@ int wasm_load_swf(const uint8_t* data, size_t size) {
     g_wasm_avm2_vm.reset();
     g_wasm_avm2_vm.set_retro_memory(&g_wasm_memory_map);
 
-    // FIX: use cumulative rebuild for frame 0 (not raw apply_frame)
-    rebuild_display_list_to(0);
+    g_wasm_swf_parser.apply_frame(0);
 
     g_wasm_game_loaded = true;
     return 1;
@@ -136,15 +119,9 @@ void wasm_step_frame(void) {
         g_wasm_current_frame = (g_wasm_current_frame + 1) % g_wasm_total_frames;
     }
 
-    // FIX: rebuild display list cumulatively so objects placed in earlier
-    // frames stay visible in later ones (core SWF cumulative model)
-    rebuild_display_list_to(g_wasm_current_frame);
+    g_wasm_swf_parser.apply_frame(g_wasm_current_frame);
+    g_wasm_swf_parser.get_display_list().advance_frame();
 
-    // Also decode the current frame's audio stream block into the mixer
-    const auto& frames = g_wasm_swf_parser.get_timeline_frames();
-    // (audio already decoded inside apply_frame called by rebuild_display_list_to)
-
-    // Clear framebuffer to background color, then re-render scene graph
     const SWFHeader& header = g_wasm_swf_parser.get_header();
     std::fill(g_wasm_framebuffer.begin(), g_wasm_framebuffer.end(),
               header.background_color_xrgb);

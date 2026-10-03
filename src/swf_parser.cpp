@@ -5,53 +5,7 @@
 #include <algorithm>
 #include <zlib.h>
 
-class BitReader {
-public:
-    BitReader(const uint8_t* data, size_t size) : m_data(data), m_size(size), m_byte_offset(0), m_bit_offset(0) {}
-
-    bool is_eof() const { return m_byte_offset >= m_size; }
-
-    uint32_t read_bits(uint8_t count) {
-        uint32_t result = 0;
-        for (uint8_t i = 0; i < count; ++i) {
-            if (m_byte_offset >= m_size) return result;
-            uint8_t bit = (m_data[m_byte_offset] >> (7 - m_bit_offset)) & 0x01;
-            result = (result << 1) | bit;
-            m_bit_offset++;
-            if (m_bit_offset == 8) {
-                m_bit_offset = 0;
-                m_byte_offset++;
-            }
-        }
-        return result;
-    }
-
-    int32_t read_sbits(uint8_t count) {
-        if (count == 0) return 0;
-        uint32_t bits = read_bits(count);
-        bool sign_bit = (bits >> (count - 1)) & 0x01;
-        if (sign_bit) {
-            uint32_t mask = (1U << count) - 1;
-            return static_cast<int32_t>(bits | ~mask);
-        }
-        return static_cast<int32_t>(bits);
-    }
-
-    void align_byte() {
-        if (m_bit_offset > 0) {
-            m_bit_offset = 0;
-            m_byte_offset++;
-        }
-    }
-
-private:
-    const uint8_t* m_data;
-    size_t m_size;
-    size_t m_byte_offset;
-    uint8_t m_bit_offset;
-};
-
-static Matrix2D read_swf_matrix(BitReader& mat_reader) {
+Matrix2D read_swf_matrix(BitReader& mat_reader) {
     Matrix2D mat;
     if (mat_reader.is_eof()) return mat;
     bool has_scale = mat_reader.read_bits(1) != 0;
@@ -405,6 +359,7 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
         } else if (tag_type == 26) { // TagPlaceObject2
             if (tag_len >= 3) {
                 uint8_t flags = uncompressed_data[tag_offset];
+                bool move = (flags & 0x01) != 0; (void)move;
                 bool has_character = (flags & 0x02) != 0;
                 bool has_matrix = (flags & 0x04) != 0;
 
@@ -430,6 +385,7 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
                 cmd.character_id = character_id;
                 cmd.transform_x = static_cast<int32_t>(mat.tx);
                 cmd.transform_y = static_cast<int32_t>(mat.ty);
+                cmd.move = move;
                 cmd.has_character = has_character;
                 cmd.has_matrix = has_matrix;
                 cmd.matrix = mat;
@@ -478,6 +434,7 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
                     if (sub_type == 26) { // TagPlaceObject2 inside sprite
                         if (sub_len >= 3) {
                             uint8_t flags = uncompressed_data[sub_offset];
+                            bool move = (flags & 0x01) != 0; (void)move;
                             bool has_char = (flags & 0x02) != 0;
                             bool has_mat = (flags & 0x04) != 0;
                             uint16_t depth = static_cast<uint16_t>(uncompressed_data[sub_offset + 1]) |
@@ -507,10 +464,12 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
                             auto existing = std::find_if(sprite.sub_objects.begin(), sprite.sub_objects.end(),
                                 [depth](const DisplayObject& obj) { return obj.depth == depth; });
                             if (existing != sprite.sub_objects.end()) {
-                                if (char_id != 0) existing->character_id = char_id;
-                                existing->transform_x = sub_obj.transform_x;
-                                existing->transform_y = sub_obj.transform_y;
-                                existing->matrix = mat;
+                                if (has_char && char_id != 0) existing->character_id = char_id;
+                                if (has_mat) {
+                                    existing->transform_x = sub_obj.transform_x;
+                                    existing->transform_y = sub_obj.transform_y;
+                                    existing->matrix = mat;
+                                }
                             } else {
                                 sprite.sub_objects.push_back(sub_obj);
                             }
@@ -589,7 +548,6 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
         offset += tag_length;
 
         if (tag_type == 0) { // TagEnd
-            // Put any remaining commands in m_current_frame_builder into m_timeline_frames
             if (!m_current_frame_builder.place_commands.empty() ||
                 !m_current_frame_builder.remove_commands.empty() ||
                 !m_current_frame_builder.sound_stream_block.empty()) {
@@ -613,6 +571,10 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
 void SWFParser::apply_frame(size_t frame_index) {
     if (frame_index >= m_timeline_frames.size()) return;
 
+    if (frame_index == 0 && m_timeline_frames.size() > 1) {
+        m_display_list.clear_active_objects();
+    }
+
     const SWFFrame& frame = m_timeline_frames[frame_index];
 
     for (const auto& remove_cmd : frame.remove_commands) {
@@ -620,16 +582,12 @@ void SWFParser::apply_frame(size_t frame_index) {
     }
 
     for (const auto& place_cmd : frame.place_commands) {
-        if (place_cmd.has_character && place_cmd.character_id != 0) {
-            // New object — place fresh at this depth
-            m_display_list.place_object_matrix(
-                place_cmd.depth, place_cmd.character_id, place_cmd.matrix);
-        } else if (!place_cmd.has_character) {
-            // No new character — just update matrix of existing object at depth
-            if (place_cmd.has_matrix) {
-                m_display_list.update_object_matrix(place_cmd.depth, place_cmd.matrix);
-            }
-        }
+        m_display_list.place_object_matrix(
+            place_cmd.depth,
+            place_cmd.character_id,
+            place_cmd.matrix,
+            place_cmd.has_character
+        );
     }
 
     if (!frame.sound_stream_block.empty()) {

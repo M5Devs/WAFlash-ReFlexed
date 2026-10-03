@@ -9,6 +9,54 @@
 #include "audio_mixer.h"
 #include "audio_stream_decoder.h"
 
+class BitReader {
+public:
+    BitReader(const uint8_t* data, size_t size) : m_data(data), m_size(size), m_byte_offset(0), m_bit_offset(0) {}
+
+    bool is_eof() const { return m_byte_offset >= m_size; }
+
+    uint32_t read_bits(uint8_t count) {
+        uint32_t result = 0;
+        for (uint8_t i = 0; i < count; ++i) {
+            if (m_byte_offset >= m_size) return result;
+            uint8_t bit = (m_data[m_byte_offset] >> (7 - m_bit_offset)) & 0x01;
+            result = (result << 1) | bit;
+            m_bit_offset++;
+            if (m_bit_offset == 8) {
+                m_bit_offset = 0;
+                m_byte_offset++;
+            }
+        }
+        return result;
+    }
+
+    int32_t read_sbits(uint8_t count) {
+        if (count == 0) return 0;
+        uint32_t bits = read_bits(count);
+        bool sign_bit = (bits >> (count - 1)) & 0x01;
+        if (sign_bit) {
+            uint32_t mask = (1U << count) - 1;
+            return static_cast<int32_t>(bits | ~mask);
+        }
+        return static_cast<int32_t>(bits);
+    }
+
+    void align_byte() {
+        if (m_bit_offset > 0) {
+            m_bit_offset = 0;
+            m_byte_offset++;
+        }
+    }
+
+private:
+    const uint8_t* m_data;
+    size_t m_size;
+    size_t m_byte_offset;
+    uint8_t m_bit_offset;
+};
+
+Matrix2D read_swf_matrix(BitReader& mat_reader);
+
 struct SWFHeader {
     char signature[3];
     uint8_t version;
@@ -41,6 +89,7 @@ struct SWFPlaceCommand {
     uint16_t character_id{0};
     int32_t transform_x{0};
     int32_t transform_y{0};
+    bool move{false};
     bool has_character{false};
     bool has_matrix{false};
     Matrix2D matrix{};
