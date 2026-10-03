@@ -48,6 +48,59 @@ if(NOT EXISTS "${GAMESWF_ROOT}/gameswf/gameswf_action.cpp")
     endif()
 endif()
 
+# Apply C++17 compatibility patches to gameswf files if needed
+if(EXISTS "${GAMESWF_ROOT}/base/utility.h")
+    file(READ "${GAMESWF_ROOT}/base/utility.h" UTILITY_H_CONTENT)
+    if(UTILITY_H_CONTENT MATCHES "inline float\tfmax")
+        string(REPLACE
+            "inline float\tfmax(float a, float b) { if (a < b) return b; else return a; }"
+            "#include <cmath>\n#ifndef fmax\n#define fmax std::fmax\n#endif\n"
+            UTILITY_H_CONTENT "${UTILITY_H_CONTENT}")
+        string(REPLACE
+            "inline float\tfmin(float a, float b) { if (a < b) return a; else return b; }"
+            "#ifndef fmin\n#define fmin std::fmin\n#endif\n"
+            UTILITY_H_CONTENT "${UTILITY_H_CONTENT}")
+        file(WRITE "${GAMESWF_ROOT}/base/utility.h" "${UTILITY_H_CONTENT}")
+    endif()
+endif()
+
+if(EXISTS "${GAMESWF_ROOT}/gameswf/gameswf_environment.h")
+    file(READ "${GAMESWF_ROOT}/gameswf/gameswf_environment.h" ENV_H_CONTENT)
+    if(ENV_H_CONTENT MATCHES "private array<as_value>")
+        string(REPLACE
+            "struct vm_stack : private array<as_value>"
+            "struct vm_stack : public array<as_value>"
+            ENV_H_CONTENT "${ENV_H_CONTENT}")
+        file(WRITE "${GAMESWF_ROOT}/gameswf/gameswf_environment.h" "${ENV_H_CONTENT}")
+    endif()
+endif()
+
+if(EXISTS "${GAMESWF_ROOT}/base/container.h")
+    file(READ "${GAMESWF_ROOT}/base/container.h" CONTAINER_H_CONTENT)
+    if(CONTAINER_H_CONTENT MATCHES "unsigned int\thash_value = \\(unsigned int\\) compute_hash\\(key\\);")
+        string(REPLACE
+            "unsigned int\thash_value = (unsigned int) compute_hash(key);"
+            "typedef size_t hash_val_t;\n\thash_val_t\thash_value = compute_hash(key);"
+            CONTAINER_H_CONTENT "${CONTAINER_H_CONTENT}")
+        string(REPLACE
+            "entry(const T& key, const U& value, int next_in_chain, int hash_value)"
+            "typedef size_t hash_val_t;\n\t\tentry(const T& key, const U& value, int next_in_chain, hash_val_t hash_value)"
+            CONTAINER_H_CONTENT "${CONTAINER_H_CONTENT}")
+        file(WRITE "${GAMESWF_ROOT}/base/container.h" "${CONTAINER_H_CONTENT}")
+    endif()
+endif()
+
+if(EXISTS "${GAMESWF_ROOT}/gameswf/gameswf_sprite.cpp")
+    file(READ "${GAMESWF_ROOT}/gameswf/gameswf_sprite.cpp" SPRITE_CPP_CONTENT)
+    if(SPRITE_CPP_CONTENT MATCHES "m_init_actions_executed\\.resize\\(m_def->get_frame_count\\(\\)\\);")
+        string(REPLACE
+            "m_init_actions_executed.resize(m_def->get_frame_count());"
+            "int fc = m_def->get_frame_count(); m_init_actions_executed.resize(fc > 0 ? fc : 1);"
+            SPRITE_CPP_CONTENT "${SPRITE_CPP_CONTENT}")
+        file(WRITE "${GAMESWF_ROOT}/gameswf/gameswf_sprite.cpp" "${SPRITE_CPP_CONTENT}")
+    endif()
+endif()
+
 add_library(gameswf_core STATIC
     ${GAMESWF_ROOT}/gameswf/gameswf_action.cpp
     ${GAMESWF_ROOT}/gameswf/gameswf_dlist.cpp
