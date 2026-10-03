@@ -17,33 +17,49 @@ void DisplayList::register_sprite(const SWFSpriteDefinition& sprite) {
     m_sprite_dictionary[sprite.sprite_id] = sprite;
 }
 
-void DisplayList::place_object(uint16_t depth, uint16_t character_id, int32_t x, int32_t y) {
+void DisplayList::place_object(uint16_t depth, uint16_t character_id, int32_t x, int32_t y, bool has_character) {
     Matrix2D mat;
     mat.tx = static_cast<float>(x);
     mat.ty = static_cast<float>(y);
-    place_object_matrix(depth, character_id, mat);
+    place_object_matrix(depth, character_id, mat, has_character);
 }
 
-void DisplayList::place_object_matrix(uint16_t depth, uint16_t character_id, const Matrix2D& mat) {
+void DisplayList::place_object_matrix(uint16_t depth, uint16_t character_id, const Matrix2D& mat, bool has_character) {
+    uint16_t effective_char_id = character_id;
+
+    auto existing_it = m_stage_objects.find(depth);
+    if (!has_character && existing_it != m_stage_objects.end()) {
+        effective_char_id = existing_it->second.character_id;
+    }
+
     DisplayObject obj;
     obj.depth = depth;
-    obj.character_id = character_id;
+    obj.character_id = effective_char_id;
     obj.transform_x = static_cast<int32_t>(mat.tx);
     obj.transform_y = static_cast<int32_t>(mat.ty);
     obj.matrix = mat;
     m_stage_objects[depth] = obj;
 
-    // Build or update node on root stage scene graph
-    auto sprite_it = m_sprite_dictionary.find(character_id);
-    if (sprite_it != m_sprite_dictionary.end()) {
-        auto clip = create_movieclip_from_sprite(character_id);
-        clip->local_matrix = mat;
-        m_root_stage->add_child(depth, clip);
-    } else {
-        auto shape_node = std::make_shared<ShapeInstance>();
-        shape_node->character_id = character_id;
-        shape_node->local_matrix = mat;
-        m_root_stage->add_child(depth, shape_node);
+    if (!has_character && m_root_stage) {
+        auto node_it = m_root_stage->children.find(depth);
+        if (node_it != m_root_stage->children.end() && node_it->second) {
+            node_it->second->local_matrix = mat;
+            return;
+        }
+    }
+
+    if (effective_char_id != 0 && m_root_stage) {
+        auto sprite_it = m_sprite_dictionary.find(effective_char_id);
+        if (sprite_it != m_sprite_dictionary.end()) {
+            auto clip = create_movieclip_from_sprite(effective_char_id);
+            clip->local_matrix = mat;
+            m_root_stage->add_child(depth, clip);
+        } else {
+            auto shape_node = std::make_shared<ShapeInstance>();
+            shape_node->character_id = effective_char_id;
+            shape_node->local_matrix = mat;
+            m_root_stage->add_child(depth, shape_node);
+        }
     }
 }
 
@@ -78,20 +94,7 @@ std::shared_ptr<MovieClipInstance> DisplayList::create_movieclip_from_sprite(uin
 }
 
 void DisplayList::update_object_matrix(uint16_t depth, const Matrix2D& mat) {
-    // Update transform of existing object at this depth without changing character
-    auto it = m_stage_objects.find(depth);
-    if (it != m_stage_objects.end()) {
-        it->second.matrix = mat;
-        it->second.transform_x = static_cast<int32_t>(mat.tx);
-        it->second.transform_y = static_cast<int32_t>(mat.ty);
-    }
-    // Update node in scene graph
-    if (m_root_stage) {
-        auto node_it = m_root_stage->children.find(depth);
-        if (node_it != m_root_stage->children.end() && node_it->second) {
-            node_it->second->local_matrix = mat;
-        }
-    }
+    place_object_matrix(depth, 0, mat, false);
 }
 
 void DisplayList::remove_object(uint16_t depth) {
@@ -101,14 +104,17 @@ void DisplayList::remove_object(uint16_t depth) {
     }
 }
 
+void DisplayList::clear_active_objects() {
+    m_stage_objects.clear();
+    if (m_root_stage) {
+        m_root_stage->children.clear();
+    }
+}
+
 void DisplayList::clear() {
     m_dictionary.clear();
     m_sprite_dictionary.clear();
-    m_stage_objects.clear();
-    m_root_stage = std::make_shared<MovieClipInstance>();
-    m_root_stage->depth = 0;
-    m_root_stage->character_id = 0;
-    m_root_stage->name = "stage";
+    clear_active_objects();
 }
 
 void DisplayList::advance_frame() {

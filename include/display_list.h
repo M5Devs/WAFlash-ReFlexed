@@ -134,11 +134,12 @@ public:
 
     void register_shape(const SWFShapeDefinition& shape);
     void register_sprite(const SWFSpriteDefinition& sprite);
-    void place_object(uint16_t depth, uint16_t character_id, int32_t x, int32_t y);
-    void place_object_matrix(uint16_t depth, uint16_t character_id, const Matrix2D& mat);
+    void place_object(uint16_t depth, uint16_t character_id, int32_t x, int32_t y, bool has_character = true);
+    void place_object_matrix(uint16_t depth, uint16_t character_id, const Matrix2D& mat, bool has_character = true);
     void update_object_matrix(uint16_t depth, const Matrix2D& mat);
     void remove_object(uint16_t depth);
     void clear();
+    void clear_active_objects();
 
     void advance_frame();
 
