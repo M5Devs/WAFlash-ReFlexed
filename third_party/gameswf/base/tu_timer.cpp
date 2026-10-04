@@ -7,9 +7,10 @@
 
 //Pete H - no sys/timeb in marmalade
 //#include <sys/timeb.h>	// for ftime()
-#ifndef	_TIME_T
-#define	_TIME_T
-typedef	long	time_t;
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__) && \
+    !defined(_TIME_T_DEFINED) && !defined(__time_t_defined)
+    typedef long time_t;
+    #define _TIME_T_DEFINED
 #endif
 
 struct timeb {
