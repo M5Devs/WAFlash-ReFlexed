@@ -15,9 +15,10 @@
 #include <stdio.h>
 #include <time.h>
 
-#if !defined(_MSC_VER) && !defined(_TIME_T_DEFINED) && !defined(__time_t_defined)
+#if !defined(_MSC_VER) && !defined(_TIME_T_DEFINED) && !defined(__time_t_defined) && !defined(_TIME_T) && !defined(_TIME_T_DECLARED) && !defined(__DEFINED_time_t)
 typedef long time_t;
 #define _TIME_T_DEFINED
+#define _TIME_T
 #endif
 
 

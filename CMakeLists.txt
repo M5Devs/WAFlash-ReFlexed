@@ -82,17 +82,6 @@ if(EXISTS "${GAMESWF_ROOT}/base/utility.h")
     endif()
 endif()
 
-if(EXISTS "${GAMESWF_ROOT}/base/tu_types.h")
-    file(READ "${GAMESWF_ROOT}/base/tu_types.h" TU_TYPES_H_CONTENT)
-    if(NOT TU_TYPES_H_CONTENT MATCHES "_TIME_T_DEFINED")
-        string(REPLACE
-            "#include <stdio.h>"
-            "#include <stdio.h>\n#include <time.h>\n\n#if !defined(_MSC_VER) && !defined(_TIME_T_DEFINED) && !defined(__time_t_defined)\ntypedef long time_t;\n#define _TIME_T_DEFINED\n#endif"
-            TU_TYPES_H_CONTENT "${TU_TYPES_H_CONTENT}")
-        file(WRITE "${GAMESWF_ROOT}/base/tu_types.h" "${TU_TYPES_H_CONTENT}")
-    endif()
-endif()
-
 if(EXISTS "${GAMESWF_ROOT}/gameswf/gameswf_environment.h")
     file(READ "${GAMESWF_ROOT}/gameswf/gameswf_environment.h" ENV_H_CONTENT)
     if(ENV_H_CONTENT MATCHES "private array<as_value>")
@@ -235,6 +224,7 @@ if(MSVC)
     target_compile_definitions(gameswf_core PRIVATE
         _CRT_SECURE_NO_WARNINGS
         _CRT_NONSTDC_NO_WARNINGS
+        _TIME_T
     )
 else()
     target_compile_options(gameswf_core PRIVATE -fPIC -w -O3 -fno-rtti)
@@ -306,6 +296,10 @@ if(MSVC)
     target_compile_options(libretro_flash PRIVATE /W4 /O2 /EHs-c- /GR-)
 else()
     target_compile_options(libretro_flash PRIVATE -fPIC -Wall -Wextra -O3 -fno-exceptions -fno-rtti)
+endif()
+
+if(APPLE)
+    target_link_options(libretro_flash PRIVATE "-Wl,-undefined,dynamic_lookup")
 endif()
 
 # Unit Test Executable - Input Subsystem
