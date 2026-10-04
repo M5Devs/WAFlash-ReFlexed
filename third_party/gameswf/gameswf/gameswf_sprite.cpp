@@ -329,7 +329,7 @@ namespace gameswf
 							character* sib = parent_sp->m_display_list.get_character(i);
 							if (sib && sib != this) {
 								sprite_instance* sib_sp = cast_to<sprite_instance>(sib);
-								if (sib_sp && sib_sp->get_loaded_bytes() == 0) {
+								if (sib_sp && sib_sp->get_character_def() && sib_sp->get_frame_count() > 0 && sib_sp->get_loaded_bytes() == 0) {
 									skip_enterframe = true;
 									break;
 								}
