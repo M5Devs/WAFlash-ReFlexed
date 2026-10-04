@@ -73,6 +73,24 @@ if(EXISTS "${GAMESWF_ROOT}/base/utility.h")
             UTILITY_H_CONTENT "${UTILITY_H_CONTENT}")
         file(WRITE "${GAMESWF_ROOT}/base/utility.h" "${UTILITY_H_CONTENT}")
     endif()
+    if(UTILITY_H_CONTENT MATCHES "switch\\(0\\)\\{case 0: case x:;\\}")
+        string(REPLACE
+            "#define compiler_assert(x)\tswitch(0){case 0: case x:;}"
+            "#define compiler_assert(x)\tstatic_assert((x), \"compiler_assert failed\")"
+            UTILITY_H_CONTENT "${UTILITY_H_CONTENT}")
+        file(WRITE "${GAMESWF_ROOT}/base/utility.h" "${UTILITY_H_CONTENT}")
+    endif()
+endif()
+
+if(EXISTS "${GAMESWF_ROOT}/base/tu_types.h")
+    file(READ "${GAMESWF_ROOT}/base/tu_types.h" TU_TYPES_H_CONTENT)
+    if(NOT TU_TYPES_H_CONTENT MATCHES "_TIME_T_DEFINED")
+        string(REPLACE
+            "#include <stdio.h>"
+            "#include <stdio.h>\n#include <time.h>\n\n#if !defined(_MSC_VER) && !defined(_TIME_T_DEFINED) && !defined(__time_t_defined)\ntypedef long time_t;\n#define _TIME_T_DEFINED\n#endif"
+            TU_TYPES_H_CONTENT "${TU_TYPES_H_CONTENT}")
+        file(WRITE "${GAMESWF_ROOT}/base/tu_types.h" "${TU_TYPES_H_CONTENT}")
+    endif()
 endif()
 
 if(EXISTS "${GAMESWF_ROOT}/gameswf/gameswf_environment.h")
@@ -214,6 +232,10 @@ target_compile_definitions(gameswf_core PUBLIC
 
 if(MSVC)
     target_compile_options(gameswf_core PRIVATE /W3 /O2 /GR-)
+    target_compile_definitions(gameswf_core PRIVATE
+        _CRT_SECURE_NO_WARNINGS
+        _CRT_NONSTDC_NO_WARNINGS
+    )
 else()
     target_compile_options(gameswf_core PRIVATE -fPIC -w -O3 -fno-rtti)
 endif()
