@@ -8,8 +8,13 @@
 //Pete H - no sys/timeb in marmalade
 //#include <sys/timeb.h>	// for ftime()
 #include <time.h>
+#ifndef _WIN32
+#include <sys/time.h>
+#endif
+
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__) && \
-    !defined(_TIME_T_DEFINED) && !defined(__time_t_defined)
+    !defined(_TIME_T_DEFINED) && !defined(__time_t_defined) && \
+    !defined(_TIME_T)
     typedef long time_t;
     #define _TIME_T_DEFINED
 #endif
@@ -21,7 +26,23 @@ struct timeb {
 	short		dstflag;	/* [XSI] non-zero if DST in effect */
 };
 
-void ftime (timeb* b) {}
+void ftime (timeb* b)
+{
+	if (b)
+	{
+#ifndef _WIN32
+		struct timeval tv;
+		gettimeofday(&tv, 0);
+		b->time = (time_t) tv.tv_sec;
+		b->millitm = (unsigned short) (tv.tv_usec / 1000);
+#else
+		b->time = time(NULL);
+		b->millitm = 0;
+#endif
+		b->timezone = 0;
+		b->dstflag = 0;
+	}
+}
 
 
 #include <assert.h>
