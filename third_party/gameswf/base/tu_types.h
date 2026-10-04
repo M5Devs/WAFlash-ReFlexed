@@ -13,13 +13,20 @@
 
 #include "base/tu_config.h"
 #include <stdio.h>
+#include <time.h>
+
+#if !defined(_MSC_VER) && !defined(_TIME_T_DEFINED) && !defined(__time_t_defined) && !defined(_TIME_T) && !defined(_TIME_T_DECLARED) && !defined(__DEFINED_time_t)
+typedef long time_t;
+#define _TIME_T_DEFINED
+#define _TIME_T
+#endif
 
 
 #if defined(__i386__) || defined(_WIN32) || defined(__GNUC__)
 
 	// On known little-endian platforms, define this stuff.
 	#define _TU_LITTLE_ENDIAN_	1
-	
+
 	#ifdef TU_USE_SDL
 	#	ifndef _SDL_stdinc_h
 		typedef unsigned char	Uint8;
@@ -53,7 +60,7 @@
 
 	// On unknown platforms, rely on SDL
 	#include <SDL.h>
-	
+
 	#if SDL_BYTEORDER == SDL_LIL_ENDIAN
 		#define _TU_LITTLE_ENDIAN_ 1
 	#else
@@ -96,7 +103,7 @@ bool	tu_types_validate();
 
 // Local Variables:
 // mode: C++
-// c-basic-offset: 8 
+// c-basic-offset: 8
 // tab-width: 8
 // indent-tabs-mode: t
 // End:

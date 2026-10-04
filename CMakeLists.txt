@@ -73,6 +73,13 @@ if(EXISTS "${GAMESWF_ROOT}/base/utility.h")
             UTILITY_H_CONTENT "${UTILITY_H_CONTENT}")
         file(WRITE "${GAMESWF_ROOT}/base/utility.h" "${UTILITY_H_CONTENT}")
     endif()
+    if(UTILITY_H_CONTENT MATCHES "switch\\(0\\)\\{case 0: case x:;\\}")
+        string(REPLACE
+            "#define compiler_assert(x)\tswitch(0){case 0: case x:;}"
+            "#define compiler_assert(x)\tstatic_assert((x), \"compiler_assert failed\")"
+            UTILITY_H_CONTENT "${UTILITY_H_CONTENT}")
+        file(WRITE "${GAMESWF_ROOT}/base/utility.h" "${UTILITY_H_CONTENT}")
+    endif()
 endif()
 
 if(EXISTS "${GAMESWF_ROOT}/gameswf/gameswf_environment.h")
@@ -214,6 +221,11 @@ target_compile_definitions(gameswf_core PUBLIC
 
 if(MSVC)
     target_compile_options(gameswf_core PRIVATE /W3 /O2 /GR-)
+    target_compile_definitions(gameswf_core PRIVATE
+        _CRT_SECURE_NO_WARNINGS
+        _CRT_NONSTDC_NO_WARNINGS
+        _TIME_T
+    )
 else()
     target_compile_options(gameswf_core PRIVATE -fPIC -w -O3 -fno-rtti)
 endif()
@@ -284,6 +296,10 @@ if(MSVC)
     target_compile_options(libretro_flash PRIVATE /W4 /O2 /EHs-c- /GR-)
 else()
     target_compile_options(libretro_flash PRIVATE -fPIC -Wall -Wextra -O3 -fno-exceptions -fno-rtti)
+endif()
+
+if(APPLE)
+    target_link_options(libretro_flash PRIVATE "-Wl,-undefined,dynamic_lookup")
 endif()
 
 # Unit Test Executable - Input Subsystem
