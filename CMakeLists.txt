@@ -273,7 +273,15 @@ if(EMSCRIPTEN)
         TU_CONFIG_LINK_TO_ZLIB=1
     )
 
+    target_compile_options(gameswf_core INTERFACE
+        "-sUSE_LIBJPEG=1"
+        "-sUSE_ZLIB=1"
+    )
     target_compile_options(gameswf_core PRIVATE
+        "-sUSE_LIBJPEG=1"
+        "-sUSE_ZLIB=1"
+    )
+    target_link_options(gameswf_core INTERFACE
         "-sUSE_LIBJPEG=1"
         "-sUSE_ZLIB=1"
     )
