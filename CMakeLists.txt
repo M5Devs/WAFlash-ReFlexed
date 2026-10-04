@@ -33,7 +33,7 @@ endif()
 enable_testing()
 
 # ── gameswf AS1/AS2 engine (static, no OpenGL, no SDL, no stdio) ──────────────
-set(GAMESWF_ROOT "${CMAKE_SOURCE_DIR}/third_party/gameswf/GameSwfPort/GameSwf")
+set(GAMESWF_ROOT "${CMAKE_SOURCE_DIR}/third_party/gameswf/")
 
 if(NOT EXISTS "${GAMESWF_ROOT}/gameswf/gameswf_action.cpp")
     message(STATUS "gameswf source files not found. Initializing git submodules...")
