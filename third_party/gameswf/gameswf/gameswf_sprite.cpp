@@ -40,6 +40,7 @@ namespace gameswf
 		m_mouse_state(UP),
 		m_enabled(true),
 		m_on_event_load_called(false),
+	m_defer_enterframe(false),
 		m_script(NULL)
 	{
 		assert(m_def != NULL);
@@ -318,7 +319,31 @@ namespace gameswf
 
 		if (m_on_event_load_called)
 		{
-			on_event(event_id::ENTER_FRAME);
+			bool skip_enterframe = false;
+			if (m_defer_enterframe) {
+				character* parent = get_parent();
+				if (parent) {
+					sprite_instance* parent_sp = cast_to<sprite_instance>(parent);
+					if (parent_sp) {
+						for (int i = 0, n = parent_sp->m_display_list.size(); i < n; i++) {
+							character* sib = parent_sp->m_display_list.get_character(i);
+							if (sib && sib != this) {
+								sprite_instance* sib_sp = cast_to<sprite_instance>(sib);
+								if (sib_sp && sib_sp->get_character_def() && sib_sp->get_frame_count() > 0 && sib_sp->get_loaded_bytes() == 0) {
+									skip_enterframe = true;
+									break;
+								}
+							}
+						}
+					}
+				}
+				if (!skip_enterframe) {
+					m_defer_enterframe = false;
+				}
+			}
+			if (!skip_enterframe) {
+				on_event(event_id::ENTER_FRAME);
+			}
 		}
 
 		do_actions();
@@ -750,6 +775,20 @@ namespace gameswf
 
 		parent->replace_display_object( sprite, get_name(), get_depth(), false, get_cxform(), false,
 			get_matrix(), get_ratio(), get_clip_depth(), get_blend_mode());
+
+		// Set m_defer_enterframe on siblings when loadMovie is called
+		sprite_instance* parent_sp = cast_to<sprite_instance>(parent);
+		if (parent_sp) {
+			for (int i = 0, n = parent_sp->m_display_list.size(); i < n; i++) {
+				character* sib = parent_sp->m_display_list.get_character(i);
+				if (sib && sib != sprite) {
+					sprite_instance* sib_sp = cast_to<sprite_instance>(sib);
+					if (sib_sp) {
+						sib_sp->m_defer_enterframe = true;
+					}
+				}
+			}
+		}
 
 		return sprite;
 	}
