@@ -7,6 +7,7 @@
 
 //Pete H - no sys/timeb in marmalade
 //#include <sys/timeb.h>	// for ftime()
+#include <time.h>
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__) && \
     !defined(_TIME_T_DEFINED) && !defined(__time_t_defined)
     typedef long time_t;
