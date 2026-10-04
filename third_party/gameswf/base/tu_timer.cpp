@@ -12,9 +12,7 @@
 #include <sys/time.h>
 #endif
 
-#if !defined(_WIN32) && !defined(__EMSCRIPTEN__) && \
-    !defined(_TIME_T_DEFINED) && !defined(__time_t_defined) && \
-    !defined(_TIME_T)
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__) &&     !defined(_TIME_T_DEFINED) && !defined(__time_t_defined)
     typedef long time_t;
     #define _TIME_T_DEFINED
 #endif
@@ -70,13 +68,13 @@ tu_datetime::tu_datetime()
 	m_time = (time_t) tu_timer::get_systime();
 }
 
-// Returns the date for the specified Date object in milliseconds since midnight on January 1, 1970, 
+// Returns the date for the specified Date object in milliseconds since midnight on January 1, 1970,
 double tu_datetime::get_time() const
 {
 	return (double) m_time * 1000;	// *1000 means that time in milliseconds
 }
 
-// Sets the date for the specified Date object in milliseconds since midnight on January 1, 1970, 
+// Sets the date for the specified Date object in milliseconds since midnight on January 1, 1970,
 void tu_datetime::set_time(double t)
 {
 	m_time = (time_t) (t / 1000);
@@ -237,12 +235,12 @@ uint64	tu_timer::get_profile_ticks()
 	// Return microseconds.
 	struct timeval tv;
 	uint64 result;
-	
+
 	gettimeofday(&tv, 0);
 
 	result = tv.tv_sec * 1000000;
 	result += tv.tv_usec;
-	
+
 	return result;
 }
 
@@ -264,7 +262,7 @@ double	tu_timer::profile_ticks_to_milliseconds(uint64 ticks)
 
 // Local Variables:
 // mode: C++
-// c-basic-offset: 8 
+// c-basic-offset: 8
 // tab-width: 8
 // indent-tabs-mode: t
 // End:

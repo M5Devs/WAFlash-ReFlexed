@@ -60,6 +60,7 @@ namespace gameswf
 		};
 		mouse_state m_mouse_state;
 		bool m_enabled;
+		bool m_defer_enterframe;
 		bool m_on_event_load_called;
 		gc_ptr<character> m_canvas;
 
