@@ -272,6 +272,11 @@ if(EMSCRIPTEN)
         TU_CONFIG_LINK_TO_JPEGLIB=1
         TU_CONFIG_LINK_TO_ZLIB=1
     )
+
+    target_compile_options(gameswf_core PRIVATE
+        "-sUSE_LIBJPEG=1"
+        "-sUSE_ZLIB=1"
+    )
 endif()
 
 # Target 1: Libretro Core Shared Library
@@ -279,11 +284,11 @@ add_library(libretro_flash SHARED
     src/core_stub.cpp
     src/gameswf_render_wasm.cpp
     src/gameswf_tu_file_mem.cpp
-    # src/swf_parser.cpp
+    src/swf_parser.cpp
     # src/abc_parser.cpp
     src/input_manager.cpp
-    # src/avm2_vm.cpp
-    # src/display_list.cpp
+    src/avm2_vm.cpp
+    src/display_list.cpp
     src/audio_mixer.cpp
     src/audio_stream_decoder.cpp
     src/vector_rasterizer.cpp
