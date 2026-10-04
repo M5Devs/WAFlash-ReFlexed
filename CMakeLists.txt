@@ -262,9 +262,15 @@ if(EMSCRIPTEN)
         "-sEXPORT_NAME=\"createWAFlashCore\""
         "-sALLOW_MEMORY_GROWTH=1"
         "-sUSE_ZLIB=1"
+        "-sUSE_LIBJPEG=1"
         "-sEXPORTED_FUNCTIONS=['_malloc','_free','_wasm_get_audio_samples']"
         "-sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue','HEAPU8','HEAP16','HEAPU32']"
         "-O3"
+    )
+
+    target_compile_definitions(gameswf_core PUBLIC
+        TU_CONFIG_LINK_TO_JPEGLIB=1
+        TU_CONFIG_LINK_TO_ZLIB=1
     )
 endif()
 
