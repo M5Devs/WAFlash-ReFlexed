@@ -136,6 +136,17 @@ if(EXISTS "${GAMESWF_ROOT}/gameswf/gameswf_movie_def.cpp")
     endif()
 endif()
 
+if(EXISTS "${GAMESWF_ROOT}/gameswf/gameswf_movie_def.h")
+    file(READ "${GAMESWF_ROOT}/gameswf/gameswf_movie_def.h" MOVIE_DEF_H_CONTENT)
+    if(MOVIE_DEF_H_CONTENT MATCHES "assert\\(m_loading_frame >= 0 && m_loading_frame <= m_frame_count\\);")
+        string(REPLACE
+            "assert(m_loading_frame >= 0 && m_loading_frame <= m_frame_count);"
+            "//"
+            MOVIE_DEF_H_CONTENT "${MOVIE_DEF_H_CONTENT}")
+        file(WRITE "${GAMESWF_ROOT}/gameswf/gameswf_movie_def.h" "${MOVIE_DEF_H_CONTENT}")
+    endif()
+endif()
+
 add_library(gameswf_core STATIC
     ${GAMESWF_ROOT}/gameswf/gameswf_action.cpp
     ${GAMESWF_ROOT}/gameswf/gameswf_dlist.cpp
