@@ -18,6 +18,11 @@ void AudioMixer::reset() {
     m_phase = 0.0f;
 }
 
+void AudioMixer::reopen_buffer() {
+    clear_buffer();
+    m_phase = 0.0f;
+}
+
 void AudioMixer::queue_samples(const int16_t* samples, size_t sample_count) {
     if (!samples || sample_count == 0) return;
     m_ring_buffer.insert(m_ring_buffer.end(), samples, samples + sample_count);

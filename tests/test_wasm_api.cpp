@@ -9,7 +9,7 @@ int main() {
     // Valid FWS SWF header (8 bytes) + Rect (1 byte) + FrameRate/Count + TagShowFrame + TagEnd
     std::vector<uint8_t> dummy_swf = {
         'F', 'W', 'S', 15,
-        18, 0, 0, 0,                   // File length = 18 bytes
+        17, 0, 0, 0,                   // File length = 17 bytes
         0x00,                          // Rect 0x0 twips (nbits = 0)
         0x00, 0x3C,                    // 60 fps
         0x01, 0x00,                    // 1 frame
