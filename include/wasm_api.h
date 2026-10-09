@@ -16,7 +16,7 @@
 extern "C" {
 #endif
 
-EMSCRIPTEN_KEEPALIVE int wasm_load_swf(const uint8_t* data, size_t size);
+EMSCRIPTEN_KEEPALIVE int wasm_load_swf(const uint8_t* data, size_t size, int disable_filters = 0, int enable_gpu = 1);
 EMSCRIPTEN_KEEPALIVE void wasm_step_frame(void);
 EMSCRIPTEN_KEEPALIVE const uint32_t* wasm_get_framebuffer(void);
 EMSCRIPTEN_KEEPALIVE int wasm_get_width(void);
@@ -26,6 +26,7 @@ EMSCRIPTEN_KEEPALIVE void wasm_send_pointer(int x, int y, int is_down);
 EMSCRIPTEN_KEEPALIVE uint32_t wasm_get_player_score(void);
 EMSCRIPTEN_KEEPALIVE uint32_t wasm_get_player_hp(void);
 EMSCRIPTEN_KEEPALIVE size_t wasm_get_audio_samples(int16_t* out_buffer, size_t num_frames);
+EMSCRIPTEN_KEEPALIVE void wasm_reopen_audio_buffer(void);
 
 #ifdef __cplusplus
 }

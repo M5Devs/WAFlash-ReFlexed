@@ -565,6 +565,14 @@ bool SWFParser::parse(const uint8_t* data, size_t size) {
         m_current_frame_builder = SWFFrame{};
     }
 
+    if (m_timeline_frames.size() > m_header.frame_count) {
+        m_header.frame_count = static_cast<uint16_t>(m_timeline_frames.size());
+    } else if (m_header.frame_count == 0 && !m_timeline_frames.empty()) {
+        m_header.frame_count = static_cast<uint16_t>(m_timeline_frames.size());
+    } else if (m_header.frame_count == 0) {
+        m_header.frame_count = 1;
+    }
+
     return true;
 }
 

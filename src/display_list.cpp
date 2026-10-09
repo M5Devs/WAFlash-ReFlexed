@@ -21,6 +21,14 @@ void DisplayList::place_object(uint16_t depth, uint16_t character_id, int32_t x,
     Matrix2D mat;
     mat.tx = static_cast<float>(x);
     mat.ty = static_cast<float>(y);
+
+    auto existing_it = m_stage_objects.find(depth);
+    if (!has_character && existing_it != m_stage_objects.end()) {
+        mat = existing_it->second.matrix;
+        mat.tx = static_cast<float>(x);
+        mat.ty = static_cast<float>(y);
+    }
+
     place_object_matrix(depth, character_id, mat, has_character);
 }
 

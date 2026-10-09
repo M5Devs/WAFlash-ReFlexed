@@ -21,6 +21,8 @@ uint32_t              g_wasm_height = 600;
 static gameswf::player* g_player = nullptr;
 static gameswf::root*   g_movie  = nullptr;
 static AudioMixer       g_audio_mixer;
+static int              g_disable_filters = 0;
+static int              g_enable_gpu = 1;
 
 struct WasmSoundHandler : public gameswf::sound_handler {
     struct SoundData {
@@ -103,7 +105,10 @@ static WasmSoundHandler g_sound_handler;
 
 extern "C" {
 
-int wasm_load_swf(const uint8_t* data, size_t size) {
+int wasm_load_swf(const uint8_t* data, size_t size, int disable_filters, int enable_gpu) {
+    g_disable_filters = disable_filters;
+    g_enable_gpu = enable_gpu;
+
     if (!data || size == 0) return 0;
 
     if (!g_player) {
@@ -173,6 +178,10 @@ uint32_t wasm_get_player_hp(void)    { return 0; }
 size_t wasm_get_audio_samples(int16_t* out_buffer, size_t num_frames) {
     if (!out_buffer || num_frames == 0) return 0;
     return g_audio_mixer.render_frame(out_buffer, num_frames);
+}
+
+void wasm_reopen_audio_buffer(void) {
+    g_audio_mixer.reopen_buffer();
 }
 
 } // extern "C"

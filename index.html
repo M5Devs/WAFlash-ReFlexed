@@ -96,7 +96,9 @@
       if (!ptr) { setStatus('❌ WASM malloc failed'); return; }
 
       wasmModule.HEAPU8.set(bytes, ptr);
-      const ok = wasmModule._wasm_load_swf(ptr, byteLen);
+      const disableFilters = 0; // 0 = preserve vector/text filters
+      const enableGpu = 1;      // 1 = enable GPU hardware context
+      const ok = wasmModule._wasm_load_swf(ptr, byteLen, disableFilters, enableGpu);
       wasmModule._free(ptr);
 
       if (!ok) {
@@ -255,8 +257,15 @@
 
     // ─── URL loader ──────────────────────────────────────────────────────────
     window.loadUrlFromBox = async function () {
-      const url = urlBox.value.trim();
-      if (!url) return;
+      const rawUrl = urlBox.value.trim();
+      if (!rawUrl) return;
+      let url = rawUrl;
+      try {
+        url = new URL(rawUrl, window.location.href).href;
+      } catch (e) {
+        url = rawUrl;
+      }
+      urlBox.value = url;
       setStatus('Fetching: ' + url);
       try {
         const resp = await fetch(url);
@@ -288,7 +297,11 @@
     // ─── GO! ─────────────────────────────────────────────────────────────────
     bootEngine().then(() => {
       if (swfParam) {
-        urlBox.value = swfParam;
+        try {
+          urlBox.value = new URL(swfParam, window.location.href).href;
+        } catch (e) {
+          urlBox.value = swfParam;
+        }
         window.loadUrlFromBox();
       }
     });

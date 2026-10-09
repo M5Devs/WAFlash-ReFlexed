@@ -115,7 +115,24 @@ if(EXISTS "${GAMESWF_ROOT}/gameswf/gameswf_sprite.cpp")
             "m_init_actions_executed.resize(m_def->get_frame_count());"
             "int fc = m_def->get_frame_count(); m_init_actions_executed.resize(fc > 0 ? fc : 1);"
             SPRITE_CPP_CONTENT "${SPRITE_CPP_CONTENT}")
-        file(WRITE "${GAMESWF_ROOT}/gameswf/gameswf_sprite.cpp" "${SPRITE_CPP_CONTENT}")
+    endif()
+    if(SPRITE_CPP_CONTENT MATCHES "case M_TOTALFRAMES:")
+        string(REPLACE
+            "case M_TOTALFRAMES:\n\t\t{\n\t\t\t// number of frames.  Read only.\n\t\t\tint n = get_frame_count();\n\t\t\tif (n >= 0)\n\t\t\t{\n\t\t\t\tval->set_int(n);\n\t\t\t}\n\t\t\telse\n\t\t\t{\n\t\t\t\tval->set_undefined();\n\t\t\t}\n\t\t\treturn true;\n\t\t}\n\t\tcase M_FRAMESLOADED:\n\t\t{\n\t\t\tint n = get_loading_frame();\n\t\t\tif (n >= 0)\n\t\t\t{\n\t\t\t\tval->set_int(n);\n\t\t\t}\n\t\t\telse\n\t\t\t{\n\t\t\t\tval->set_undefined();\n\t\t\t}\n\t\t\treturn true;\n\t\t}"
+            "case M_TOTALFRAMES:\n\t\t{\n\t\t\t// number of frames.  Read only.\n\t\t\tint n = get_frame_count();\n\t\t\tval->set_int(n > 0 ? n : 1);\n\t\t\treturn true;\n\t\t}\n\t\tcase M_FRAMESLOADED:\n\t\t{\n\t\t\tint n = get_loading_frame();\n\t\t\tint fc = get_frame_count();\n\t\t\tint loaded = n > fc ? n : fc;\n\t\t\tval->set_int(loaded > 0 ? loaded : 1);\n\t\t\treturn true;\n\t\t}"
+            SPRITE_CPP_CONTENT "${SPRITE_CPP_CONTENT}")
+    endif()
+    file(WRITE "${GAMESWF_ROOT}/gameswf/gameswf_sprite.cpp" "${SPRITE_CPP_CONTENT}")
+endif()
+
+if(EXISTS "${GAMESWF_ROOT}/gameswf/gameswf_movie_def.cpp")
+    file(READ "${GAMESWF_ROOT}/gameswf/gameswf_movie_def.cpp" MOVIE_DEF_CPP_CONTENT)
+    if(MOVIE_DEF_CPP_CONTENT MATCHES "uint32\\tmovie_def_impl::get_file_bytes\\(\\)")
+        string(REPLACE
+            "uint32\tmovie_def_impl::get_file_bytes() const { return m_file_end_pos; }"
+            "uint32\tmovie_def_impl::get_file_bytes() const { return m_file_end_pos > 0 ? m_file_end_pos : 1; }"
+            MOVIE_DEF_CPP_CONTENT "${MOVIE_DEF_CPP_CONTENT}")
+        file(WRITE "${GAMESWF_ROOT}/gameswf/gameswf_movie_def.cpp" "${MOVIE_DEF_CPP_CONTENT}")
     endif()
 endif()
 
@@ -370,3 +387,25 @@ else()
     target_compile_options(test_wasm_api PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
 endif()
 add_test(NAME test_wasm_api COMMAND test_wasm_api)
+
+# Unit Test Executable - Runtime Patches
+add_executable(test_runtime_patches
+    tests/test_runtime_patches.cpp
+    src/swf_parser.cpp
+    src/display_list.cpp
+    src/audio_mixer.cpp
+    src/audio_stream_decoder.cpp
+    src/vector_rasterizer.cpp
+    src/wasm_api.cpp
+    src/gameswf_render_wasm.cpp
+    src/gameswf_tu_file_mem.cpp
+    src/input_manager.cpp
+)
+target_include_directories(test_runtime_patches PRIVATE include)
+target_link_libraries(test_runtime_patches PRIVATE ZLIB::ZLIB gameswf_core)
+if(MSVC)
+    target_compile_options(test_runtime_patches PRIVATE /W4 /EHs-c- /GR-)
+else()
+    target_compile_options(test_runtime_patches PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
+endif()
+add_test(NAME test_runtime_patches COMMAND test_runtime_patches)

@@ -21,6 +21,9 @@ public:
 
     void reset();
 
+    // Re-synchronize audio buffer and reset phase
+    void reopen_buffer();
+
     // Enqueue interleaved PCM audio samples (left, right, left, right...)
     // sample_count is total int16_t samples (2 * frames for stereo)
     void queue_samples(const int16_t* samples, size_t sample_count);
